@@ -223,7 +223,7 @@ fun BrakeScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(num, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                        Text("${numFormat.format(amt)} Ks", color = LuckyLime, fontSize = 13.sp)
+                                        Text(numFormat.format(amt), color = LuckyLime, fontSize = 13.sp)
                                     }
                                     Divider(color = LuckyBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
                                 }
@@ -263,7 +263,7 @@ fun BrakeScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(num, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                        Text("${numFormat.format(amt)} Ks", color = LuckyDanger, fontSize = 13.sp)
+                                        Text(numFormat.format(amt), color = LuckyDanger, fontSize = 13.sp)
                                     }
                                     Divider(color = LuckyBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
                                 }
@@ -384,7 +384,7 @@ fun BrakeScreen(
                 },
                 text = {
                     Text(
-                        text = "ဘရိတ် (${limit}) ထက် ကျော်လွန်နေသော တင်ကွက်များကို စာရင်းသွင်းမည်။\nတင်ရန် စုစုပေါင်း: ${numFormat.format(totalLayoff)} Ks (${rightLayoffList.size} လုံး)",
+                        text = "ဘရိတ် (${limit}) ထက် ကျော်လွန်နေသော တင်ကွက်များကို စာရင်းသွင်းမည်။\nတင်ရန် စုစုပေါင်း: ${numFormat.format(totalLayoff)} (${rightLayoffList.size} လုံး)",
                         color = LuckyTextSecondary,
                         fontSize = 13.sp
                     )

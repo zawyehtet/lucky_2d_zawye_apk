@@ -110,14 +110,23 @@ fun NumberEntryScreen(
 
     // Logic to add bet items from current keypad
     fun handleAddBet(withDoublesForKway: Boolean = false) {
+        if (sessions.isEmpty() || selectedSession.isEmpty()) {
+            viewModel.showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
+            return
+        }
+        if (currentAgent == null) {
+            viewModel.showToast("အေးဂျင့် အရင်ထည့်ပါ")
+            return
+        }
+
         val amount = inputAmount.toLongOrNull() ?: 0L
         if (amount <= 0) {
             viewModel.showToast("ပမာဏ (ငွေ) ရိုက်ထည့်ပါ")
             activeField = "AMOUNT"
             return
         }
-        if (amount > settings.maxBet) {
-            viewModel.showToast("အများဆုံးထိုးကြေး (${settings.maxBet}) ထက် ကျော်လွန်နေပါသည်")
+        if (settings.maxBet > 0 && amount > settings.maxBet) {
+            viewModel.showToast("သတ်မှတ်ထားသော အများဆုံးထိုးကြေး (${settings.maxBet}) ထက် ကျော်လွန်နေပါသည်")
             return
         }
 
@@ -277,7 +286,7 @@ fun NumberEntryScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "ဂဏန်းများ စတင်ထိုးရန် ခလုတ်များကို နိုပ်ပါ",
+                            text = "အချက်အလက် မရှိသေးပါ။ ဂဏန်းနှင့် ပမာဏ ရိုက်ထည့်ပါ",
                             color = LuckyTextMuted,
                             fontSize = 13.sp
                         )
@@ -317,7 +326,7 @@ fun NumberEntryScreen(
                                     textAlign = TextAlign.Center
                                 )
                                 Text(
-                                    text = "${numFormat.format(item.a)} Ks",
+                                    text = numFormat.format(item.a),
                                     color = Color.White,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 14.sp,
@@ -648,6 +657,8 @@ fun NumberEntryScreen(
                 EditBetItemDialog(
                     initialNumber = item.n,
                     initialAmount = item.a,
+                    maxBet = settings.maxBet,
+                    blocked = blocked,
                     onDismiss = { editingItemIndex = null },
                     onSave = { newNum, newAmt ->
                         viewModel.editEntryItem(index, newNum, newAmt)
@@ -810,66 +821,107 @@ fun NumKey(
 fun EditBetItemDialog(
     initialNumber: String,
     initialAmount: Long,
+    maxBet: Long,
+    blocked: Set<String>,
     onDismiss: () -> Unit,
     onSave: (String, Long) -> Unit,
     onDelete: () -> Unit
 ) {
     var numberStr by remember { mutableStateOf(initialNumber) }
     var amountStr by remember { mutableStateOf(initialAmount.toString()) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = LuckyCard,
-        shape = RoundedCornerShape(18.dp),
-        title = { Text("ဂဏန်း ပြင်ဆင်ရန် / ဖျက်ရန်", color = Color.White, fontSize = 16.sp) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = numberStr,
-                    onValueChange = { if (it.length <= 2) numberStr = it },
-                    label = { Text("ဂဏန်း") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LuckyLime, focusedTextColor = Color.White)
-                )
-
-                OutlinedTextField(
-                    value = amountStr,
-                    onValueChange = { amountStr = it },
-                    label = { Text("ပမာဏ") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LuckyLime, focusedTextColor = Color.White)
-                )
+    if (showDeleteConfirm) {
+        DeleteConfirmDialog(
+            itemName = "$initialNumber = $initialAmount",
+            onDismiss = { showDeleteConfirm = false },
+            onConfirm = {
+                showDeleteConfirm = false
+                onDelete()
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val amt = amountStr.toLongOrNull() ?: 0L
-                    if (numberStr.length == 2 && amt > 0) {
-                        onSave(numberStr, amt)
+        )
+    } else {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            containerColor = LuckyCard,
+            shape = RoundedCornerShape(18.dp),
+            title = { Text("ဂဏန်း ပြင်ဆင်ရန် / ဖျက်ရန်", color = Color.White, fontSize = 16.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = numberStr,
+                        onValueChange = {
+                            if (it.length <= 2) {
+                                numberStr = it
+                                errorMsg = null
+                            }
+                        },
+                        label = { Text("ဂဏန်း (၂ လုံး)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LuckyLime, focusedTextColor = Color.White)
+                    )
+
+                    OutlinedTextField(
+                        value = amountStr,
+                        onValueChange = {
+                            amountStr = it
+                            errorMsg = null
+                        },
+                        label = { Text("ပမာဏ") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LuckyLime, focusedTextColor = Color.White)
+                    )
+
+                    if (errorMsg != null) {
+                        Text(errorMsg!!, color = LuckyDanger, fontSize = 12.sp)
                     }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = LuckyLime, contentColor = LuckyBg)
-            ) {
-                Text("သိမ်းမည်", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(
-                    onClick = onDelete,
-                    colors = ButtonDefaults.textButtonColors(contentColor = LuckyDanger)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val amt = amountStr.toLongOrNull() ?: 0L
+                        if (numberStr.length != 2 || !numberStr.all { it.isDigit() }) {
+                            errorMsg = "ဂဏန်း ၂ လုံး ရိုက်ထည့်ပါ"
+                            return@Button
+                        }
+                        if (amt <= 0) {
+                            errorMsg = "ပမာဏ မှန်ကန်စွာ ထည့်ပါ"
+                            return@Button
+                        }
+                        if (maxBet > 0 && amt > maxBet) {
+                            errorMsg = "သတ်မှတ်ထားသော အများဆုံးထိုးကြေး ($maxBet) ထက် ကျော်လွန်နေပါသည်"
+                            return@Button
+                        }
+                        if (blocked.contains(numberStr)) {
+                            errorMsg = "$numberStr သည် မရဂဏန်း ဖြစ်ပါသည်"
+                            return@Button
+                        }
+                        onSave(numberStr, amt)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = LuckyLime, contentColor = LuckyBg)
                 ) {
-                    Text("ဖျက်မည်")
+                    Text("သိမ်းမည်", fontWeight = FontWeight.Bold)
                 }
-                TextButton(onClick = onDismiss) {
-                    Text("မလုပ်တော့ပါ", color = LuckyTextSecondary)
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = { showDeleteConfirm = true },
+                        colors = ButtonDefaults.textButtonColors(contentColor = LuckyDanger)
+                    ) {
+                        Text("ဖျက်မည်")
+                    }
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel", color = LuckyTextSecondary)
+                    }
                 }
             }
-        }
-    )
+        )
+    }
 }
 
 @Composable

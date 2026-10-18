@@ -9,13 +9,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.ListAlt
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.FormatListNumbered
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,9 +28,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.Voucher
 import com.example.ui.MainViewModel
 import com.example.ui.Screen
-import com.example.ui.components.AppHeader
+import com.example.ui.components.*
 import com.example.ui.theme.*
 import java.text.NumberFormat
 import java.util.Locale
@@ -37,25 +42,27 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val selectedSession by viewModel.selectedSession.collectAsState()
-    val sessions by viewModel.sessions.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
+    val sessions by viewModel.sessions.collectAsState()
     val vouchers by viewModel.vouchers.collectAsState()
-
-    // Filtered vouchers for current date and session
-    val currentVouchers = vouchers.filter {
-        it.date == selectedDate && it.session == selectedSession
-    }
     val totalRetained = viewModel.getTotalRetainedMoney()
 
-    val numFormat = NumberFormat.getNumberInstance(Locale.US)
+    val currentVouchers = remember(vouchers, selectedDate, selectedSession) {
+        vouchers.filter { it.date == selectedDate && it.session == selectedSession }
+    }
+
+    val numFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
+
+    var voucherToDelete by remember { mutableStateOf<Voucher?>(null) }
+    var menuVoucher by remember { mutableStateOf<Voucher?>(null) }
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(LuckyBg)
     ) {
+        // App Header
         AppHeader(
-            title = "Lucky2d",
             selectedSession = selectedSession,
             sessions = sessions,
             onSessionSelected = { viewModel.setSession(it) }
@@ -65,17 +72,16 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(top = 16.dp, bottom = 90.dp),
+            contentPadding = PaddingValues(vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Big Hero Card: စုစုပေါင်း လက်ခံငွေ
+            // Hero Card: Total Retained Money
             item {
                 Card(
+                    modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(22.dp),
                     colors = CardDefaults.cardColors(containerColor = LuckyCard),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, LuckyBorder, RoundedCornerShape(22.dp))
+                    border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(LuckyBorder))
                 ) {
                     Column(
                         modifier = Modifier
@@ -91,14 +97,14 @@ fun HomeScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "${numFormat.format(totalRetained)} Ks",
+                            text = numFormat.format(totalRetained),
                             color = LuckyLime,
                             fontSize = 28.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "နေ့စွဲ : $selectedDate ($selectedSession)",
+                            text = "နေ့စွဲ : $selectedDate (${if (selectedSession.isEmpty()) "အကြိမ် မရှိသေးပါ" else selectedSession})",
                             color = LuckyTextMuted,
                             fontSize = 13.sp
                         )
@@ -119,15 +125,15 @@ fun HomeScreen(
                             )
 
                             HomeRoundButton(
-                                icon = Icons.Default.ListAlt,
+                                icon = Icons.Default.FormatListNumbered,
                                 label = "ဂဏန်းများ",
                                 testTag = "home_numbers_button",
                                 onClick = { viewModel.navigateTo(Screen.NUMBERS) }
                             )
 
                             HomeRoundButton(
-                                icon = Icons.Default.Calculate,
-                                label = "တင်ကွက်",
+                                icon = Icons.Default.Tune,
+                                label = "ဘရိတ်တင်ငွေ",
                                 testTag = "home_brake_button",
                                 onClick = { viewModel.navigateTo(Screen.BRAKE) }
                             )
@@ -136,7 +142,54 @@ fun HomeScreen(
                 }
             }
 
-            // Latest Vouchers Header
+            // Quick Actions: တင်ကွက်မှတ်တမ်း, ဘောင်ချာများ, စာရင်းချုပ်
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { viewModel.navigateTo(Screen.LAYOFF_HISTORY) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = LuckyCard, contentColor = Color.White),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, LuckyBorder),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        Icon(Icons.Default.History, contentDescription = null, tint = LuckyLime, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("တင်ကွက်", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    OutlinedButton(
+                        onClick = { viewModel.navigateTo(Screen.VOUCHERS) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = LuckyCard, contentColor = Color.White),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, LuckyBorder),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        Icon(Icons.Default.Receipt, contentDescription = null, tint = LuckyLime, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("ဘောင်ချာ", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    OutlinedButton(
+                        onClick = { viewModel.navigateTo(Screen.SETTLEMENT) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = LuckyCard, contentColor = Color.White),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, LuckyBorder),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = LuckyLime, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("စာရင်းချုပ်", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+
+            // Section Header: မကြာသေးမီက ဘောင်ချာများ (ဖိထားပါက ဖျက်နိုင်သည်)
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -144,21 +197,24 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "ဘောင်ချာများ (လတ်တလော)",
+                        text = "မကြာသေးမီက ဘောင်ချာများ",
                         color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
                     )
-                    Text(
-                        text = "အားလုံး",
-                        color = LuckyLime,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier
-                            .testTag("home_view_all_vouchers")
-                            .clickable { viewModel.navigateTo(Screen.VOUCHERS) }
-                            .padding(4.dp)
-                    )
+                    TextButton(
+                        onClick = { viewModel.navigateTo(Screen.VOUCHERS) }
+                    ) {
+                        Text("အားလုံးကြည့်မည်", color = LuckyLime, fontSize = 12.sp)
+                        Icon(
+                            imageVector = Icons.Default.ArrowForward,
+                            contentDescription = "View all",
+                            tint = LuckyLime,
+                            modifier = Modifier
+                                .size(14.dp)
+                                .padding(4.dp)
+                        )
+                    }
                 }
             }
 
@@ -166,27 +222,48 @@ fun HomeScreen(
             val recentVouchers = currentVouchers.take(5)
             if (recentVouchers.isEmpty()) {
                 item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "ယနေ့ အပိုင်းအတွက် ဘောင်ချာ မရှိသေးပါ",
-                            color = LuckyTextMuted,
-                            fontSize = 14.sp
-                        )
-                    }
+                    EmptyStateView("အချက်အလက် မရှိသေးပါ။ + ကိုနှိပ်ပြီး ထည့်ပါ")
                 }
             } else {
                 items(recentVouchers, key = { it.id }) { voucher ->
                     VoucherItemRow(
                         voucher = voucher,
-                        onClick = { viewModel.navigateTo(Screen.VOUCHERS) }
+                        onClick = { viewModel.navigateTo(Screen.VOUCHERS) },
+                        onLongClick = {
+                            menuVoucher = voucher
+                        }
                     )
                 }
             }
+        }
+
+        // Long press menu dialog for voucher
+        menuVoucher?.let { v ->
+            RecordActionMenuDialog(
+                title = "ဘောင်ချာ ${v.agent} (No.${v.no})",
+                onDismiss = { menuVoucher = null },
+                onEdit = {
+                    menuVoucher = null
+                    viewModel.navigateTo(Screen.VOUCHERS)
+                },
+                onDelete = {
+                    val target = menuVoucher
+                    menuVoucher = null
+                    voucherToDelete = target
+                }
+            )
+        }
+
+        // Delete confirm dialog
+        voucherToDelete?.let { v ->
+            DeleteConfirmDialog(
+                itemName = "ဘောင်ချာ ${v.agent} (No.${v.no})",
+                onDismiss = { voucherToDelete = null },
+                onConfirm = {
+                    viewModel.deleteVoucher(v.id)
+                    voucherToDelete = null
+                }
+            )
         }
     }
 }
@@ -229,17 +306,21 @@ fun HomeRoundButton(
 
 @Composable
 fun VoucherItemRow(
-    voucher: com.example.data.Voucher,
-    onClick: () -> Unit
+    voucher: Voucher,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
 ) {
-    val numFormat = NumberFormat.getNumberInstance(Locale.US)
+    val numFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(LuckyCard)
             .border(1.dp, LuckyBorder, RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
+            .recordLongPress(
+                onLongPress = { onLongClick?.invoke() },
+                onClick = onClick
+            )
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -278,7 +359,7 @@ fun VoucherItemRow(
         }
 
         Text(
-            text = "${numFormat.format(voucher.totalAmount)} Ks",
+            text = numFormat.format(voucher.totalAmount),
             color = LuckyLime,
             fontWeight = FontWeight.Bold,
             fontSize = 15.sp

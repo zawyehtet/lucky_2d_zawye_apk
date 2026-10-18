@@ -26,12 +26,7 @@ class StorageRepository(context: Context) {
         return try {
             val jsonStr = prefs.getString(KEY_SESSIONS, null)
             if (jsonStr.isNullOrEmpty()) {
-                val defaults = listOf(
-                    Session("12.AM", 15.0, 80.0),
-                    Session("4.PM", 15.0, 80.0)
-                )
-                saveSessions(defaults)
-                defaults
+                emptyList()
             } else {
                 val arr = JSONArray(jsonStr)
                 val list = mutableListOf<Session>()
@@ -45,11 +40,20 @@ class StorageRepository(context: Context) {
                         )
                     )
                 }
-                list
+                // If it only contains the old default 12.AM and 4.PM, clear them
+                val isOldDefaults = list.size == 2 &&
+                    list.getOrNull(0)?.name == "12.AM" &&
+                    list.getOrNull(1)?.name == "4.PM"
+                if (isOldDefaults) {
+                    saveSessions(emptyList())
+                    emptyList()
+                } else {
+                    list
+                }
             }
         } catch (e: Exception) {
             Log.e("StorageRepository", "Error loading sessions", e)
-            listOf(Session("12.AM", 15.0, 80.0), Session("4.PM", 15.0, 80.0))
+            emptyList()
         }
     }
 

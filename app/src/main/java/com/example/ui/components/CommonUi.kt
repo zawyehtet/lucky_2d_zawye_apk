@@ -8,11 +8,14 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -21,8 +24,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.Session
@@ -91,15 +95,15 @@ fun SessionPill(
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                text = selectedSession,
-                color = LuckyLime,
+                text = if (sessions.isEmpty()) "အကြိမ် မရှိသေးပါ" else selectedSession,
+                color = if (sessions.isEmpty()) LuckyTextMuted else LuckyLime,
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp
             )
             Icon(
                 imageVector = Icons.Default.ArrowDropDown,
                 contentDescription = "Select Session",
-                tint = LuckyLime,
+                tint = if (sessions.isEmpty()) LuckyTextMuted else LuckyLime,
                 modifier = Modifier.size(18.dp)
             )
         }
@@ -109,20 +113,33 @@ fun SessionPill(
             onDismissRequest = { expanded = false },
             modifier = Modifier.background(LuckyCard)
         ) {
-            sessions.forEach { s ->
+            if (sessions.isEmpty()) {
                 DropdownMenuItem(
                     text = {
                         Text(
-                            text = s.name,
-                            color = if (s.name == selectedSession) LuckyLime else Color.White,
-                            fontWeight = if (s.name == selectedSession) FontWeight.Bold else FontWeight.Normal
+                            text = "အကြိမ် မရှိသေးပါ",
+                            color = LuckyTextMuted,
+                            fontSize = 13.sp
                         )
                     },
-                    onClick = {
-                        onSessionSelected(s.name)
-                        expanded = false
-                    }
+                    onClick = { expanded = false }
                 )
+            } else {
+                sessions.forEach { s ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = s.name,
+                                color = if (s.name == selectedSession) LuckyLime else Color.White,
+                                fontWeight = if (s.name == selectedSession) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        onClick = {
+                            onSessionSelected(s.name)
+                            expanded = false
+                        }
+                    )
+                }
             }
         }
     }
@@ -200,6 +217,147 @@ fun CircularActionButton(
     }
 }
 
+fun Modifier.recordLongPress(
+    onLongPress: () -> Unit,
+    onClick: (() -> Unit)? = null
+): Modifier = this.pointerInput(Unit) {
+    detectTapGestures(
+        onLongPress = { onLongPress() },
+        onClick = { onClick?.invoke() }
+    )
+}
+
+@Composable
+fun DeleteConfirmDialog(
+    itemName: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LuckyCard,
+        title = {
+            Text(
+                text = "ဖျက်မည်လား?",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+        },
+        text = {
+            Text(
+                text = "$itemName ကို ဖျက်မည်လား?",
+                color = LuckyTextSecondary,
+                fontSize = 14.sp
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = LuckyDanger,
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("Delete", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = LuckyTextSecondary)
+            }
+        }
+    )
+}
+
+@Composable
+fun RecordActionMenuDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    onEdit: (() -> Unit)? = null,
+    onDelete: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LuckyCard,
+        title = {
+            Text(
+                text = title,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (onEdit != null) {
+                    TextButton(
+                        onClick = {
+                            onDismiss()
+                            onEdit()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = LuckyLime)
+                            Text("ပြင်ဆင်မည် (Edit)", color = Color.White, fontSize = 15.sp)
+                        }
+                    }
+                }
+                TextButton(
+                    onClick = {
+                        onDismiss()
+                        onDelete()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = LuckyDanger)
+                        Text("ဖျက်မည် (Delete)", color = LuckyDanger, fontSize = 15.sp)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("ပိတ်မည်", color = LuckyTextSecondary)
+            }
+        }
+    )
+}
+
+@Composable
+fun EmptyStateView(
+    message: String = "အချက်အလက် မရှိသေးပါ။ + ကိုနှိပ်ပြီး ထည့်ပါ",
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 32.dp, horizontal = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = message,
+            color = LuckyTextMuted,
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
 object ShareHelper {
     fun copyToClipboard(context: Context, text: String, label: String = "Lucky2d") {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -218,7 +376,6 @@ object ShareHelper {
     }
 
     fun printText(context: Context, text: String) {
-        // Fallback for native Android print without external printer: copy and inform
         copyToClipboard(context, text, "Print Receipt")
         Toast.makeText(context, "ပရင့်ထုတ်ရန် အချက်အလက် ကူးယူပြီးပါပြီ", Toast.LENGTH_LONG).show()
     }

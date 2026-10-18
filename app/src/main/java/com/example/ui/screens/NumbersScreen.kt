@@ -182,7 +182,7 @@ fun NumbersScreen(
                                 }
 
                                 Text(
-                                    text = "${numFormat.format(item.netAmount)} Ks",
+                                    text = numFormat.format(item.netAmount),
                                     color = Color.White,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 15.sp,
@@ -210,7 +210,7 @@ fun NumbersScreen(
                         fontSize = 15.sp
                     )
                     Text(
-                        text = "${numFormat.format(grandTotal)} Ks",
+                        text = numFormat.format(grandTotal),
                         color = LuckyLime,
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp

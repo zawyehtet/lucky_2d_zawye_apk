@@ -48,7 +48,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedDate = MutableStateFlow(todayDate)
     val selectedDate: StateFlow<String> = _selectedDate.asStateFlow()
 
-    private val _selectedSession = MutableStateFlow("12.AM")
+    private val _selectedSession = MutableStateFlow("")
     val selectedSession: StateFlow<String> = _selectedSession.asStateFlow()
 
     private val _currentScreen = MutableStateFlow(Screen.HOME)
@@ -104,8 +104,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun loadAllData() {
         val loadedSessions = repository.loadSessions()
         _sessions.value = loadedSessions
-        if (loadedSessions.isNotEmpty() && !loadedSessions.any { it.name == _selectedSession.value }) {
-            _selectedSession.value = loadedSessions.first().name
+        if (loadedSessions.isNotEmpty()) {
+            if (_selectedSession.value.isEmpty() || !loadedSessions.any { it.name == _selectedSession.value }) {
+                _selectedSession.value = loadedSessions.first().name
+            }
+        } else {
+            _selectedSession.value = ""
         }
 
         _agents.value = repository.loadAgents()

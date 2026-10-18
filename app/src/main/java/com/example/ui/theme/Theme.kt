@@ -3,6 +3,7 @@ package com.example.ui.theme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
@@ -31,13 +32,15 @@ val LuckyShapes = Shapes(
     large = RoundedCornerShape(22.dp)
 )
 
+val LuckyTypography = Typography()
+
 @Composable
 fun MyApplicationTheme(
     content: @Composable () -> Unit
 ) {
     MaterialTheme(
         colorScheme = LuckyColorScheme,
-        typography = Typography,
+        typography = LuckyTypography,
         shapes = LuckyShapes,
         content = content
     )
