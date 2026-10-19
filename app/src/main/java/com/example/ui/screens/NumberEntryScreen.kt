@@ -39,6 +39,8 @@ import com.example.data.BetItem
 import com.example.logic.PatternAlgorithms
 import com.example.ui.MainViewModel
 import com.example.ui.Screen
+import com.example.ui.components.DeleteConfirmDialog
+import com.example.ui.components.recordLongPress
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
@@ -50,6 +52,7 @@ fun NumberEntryScreen(
     modifier: Modifier = Modifier
 ) {
     val selectedSession by viewModel.selectedSession.collectAsState()
+    val sessions by viewModel.sessions.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
     val currentAgent by viewModel.entryAgent.collectAsState()
     val agents by viewModel.agents.collectAsState()
@@ -300,9 +303,8 @@ fun NumberEntryScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .combinedClickable(
-                                        onClick = {},
-                                        onLongClick = {
+                                    .recordLongPress(
+                                        onLongPress = {
                                             editingItemIndex = index
                                         }
                                     )

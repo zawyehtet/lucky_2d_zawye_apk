@@ -8,7 +8,10 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -220,33 +223,63 @@ fun CircularActionButton(
 fun Modifier.recordLongPress(
     onLongPress: () -> Unit,
     onClick: (() -> Unit)? = null
-): Modifier = this.pointerInput(Unit) {
-    detectTapGestures(
-        onLongPress = { onLongPress() },
-        onClick = { onClick?.invoke() }
-    )
+): Modifier = this.pointerInput(onLongPress, onClick) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val initialPosition = down.position
+        var longPressTriggered = false
+        val timeout = withTimeoutOrNull(550) {
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id }
+                if (change == null || !change.pressed) {
+                    break
+                }
+                val diff = (change.position - initialPosition).getDistance()
+                if (diff > viewConfiguration.touchSlop) {
+                    break
+                }
+            }
+        }
+        if (timeout == null) {
+            longPressTriggered = true
+            down.consume()
+            onLongPress()
+        } else {
+            val change = currentEvent.changes.firstOrNull { it.id == down.id }
+            if (change != null && !change.pressed && !longPressTriggered) {
+                val diff = (change.position - initialPosition).getDistance()
+                if (diff <= viewConfiguration.touchSlop) {
+                    onClick?.invoke()
+                }
+            }
+        }
+    }
 }
 
 @Composable
 fun DeleteConfirmDialog(
-    itemName: String,
+    itemName: String = "",
     onDismiss: () -> Unit,
-    onConfirm: () -> Unit
+    onConfirm: () -> Unit,
+    title: String = "ဖျက်ရန် သေချာပါသလား?",
+    message: String? = null
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = LuckyCard,
+        shape = RoundedCornerShape(16.dp),
         title = {
             Text(
-                text = "ဖျက်မည်လား?",
+                text = title,
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
+                fontSize = 17.sp
             )
         },
         text = {
             Text(
-                text = "$itemName ကို ဖျက်မည်လား?",
+                text = message ?: if (itemName.isNotBlank()) "$itemName ကို ဖျက်ရန် သေချာပါသလား?" else "ဖျက်ရန် သေချာပါသလား?",
                 color = LuckyTextSecondary,
                 fontSize = 14.sp
             )
@@ -260,12 +293,12 @@ fun DeleteConfirmDialog(
                 ),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Text("Delete", fontWeight = FontWeight.Bold)
+                Text("သေချာသည်", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = LuckyTextSecondary)
+                Text("မဖျက်ပါ", color = LuckyTextSecondary)
             }
         }
     )
@@ -356,6 +389,14 @@ fun EmptyStateView(
             textAlign = TextAlign.Center
         )
     }
+}
+
+@Composable
+fun EmptyListPlaceholder(
+    text: String = "အချက်အလက် မရှိသေးပါ။ + ကိုနှိပ်ပြီး ထည့်ပါ",
+    modifier: Modifier = Modifier
+) {
+    EmptyStateView(message = text, modifier = modifier)
 }
 
 object ShareHelper {

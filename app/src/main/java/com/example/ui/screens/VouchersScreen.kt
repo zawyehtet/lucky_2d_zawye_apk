@@ -29,8 +29,11 @@ import androidx.compose.ui.unit.sp
 import com.example.data.Voucher
 import com.example.ui.MainViewModel
 import com.example.ui.components.AppHeader
+import com.example.ui.components.DeleteConfirmDialog
+import com.example.ui.components.EmptyListPlaceholder
 import com.example.ui.components.SearchPill
 import com.example.ui.components.ShareHelper
+import com.example.ui.components.recordLongPress
 import com.example.ui.theme.*
 import java.text.NumberFormat
 import java.util.Locale
@@ -45,6 +48,10 @@ fun VouchersScreen(
     val sessions by viewModel.sessions.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
     val vouchers by viewModel.vouchers.collectAsState()
+    val settings by viewModel.settings.collectAsState()
+    val blocked by viewModel.blocked.collectAsState()
+
+    var voucherToDelete by remember { mutableStateOf<Voucher?>(null) }
 
     var searchQuery by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -124,7 +131,7 @@ fun VouchersScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "ဘောင်ချာ မရှိသေးပါ",
+                                text = "အချက်အလက် မရှိသေးပါ။ + ကိုနှိပ်ပြီး ထည့်ပါ",
                                 color = LuckyTextMuted,
                                 fontSize = 14.sp
                             )
@@ -141,7 +148,7 @@ fun VouchersScreen(
                                 editingInitialAmount = item.a
                             },
                             onDeleteVoucher = {
-                                viewModel.deleteVoucher(voucher.id)
+                                voucherToDelete = voucher
                             },
                             onCopy = {
                                 val text = buildReceiptText(voucher)
@@ -161,11 +168,25 @@ fun VouchersScreen(
             }
         }
 
+        // Delete Voucher Confirm Dialog
+        voucherToDelete?.let { v ->
+            DeleteConfirmDialog(
+                itemName = "ဘောင်ချာ No.${v.no}",
+                onDismiss = { voucherToDelete = null },
+                onConfirm = {
+                    viewModel.deleteVoucher(v.id)
+                    voucherToDelete = null
+                }
+            )
+        }
+
         // Edit/Delete Voucher Item Dialog
         if (editingVoucherId != null && editingItemIndex != null) {
             EditBetItemDialog(
                 initialNumber = editingInitialNumber,
                 initialAmount = editingInitialAmount,
+                maxBet = settings.maxBet,
+                blocked = blocked,
                 onDismiss = {
                     editingVoucherId = null
                     editingItemIndex = null
@@ -206,6 +227,7 @@ fun VoucherCard(
         colors = CardDefaults.cardColors(containerColor = LuckyCard),
         modifier = Modifier
             .fillMaxWidth()
+            .recordLongPress(onLongPress = onDeleteVoucher)
             .border(1.dp, LuckyBorder, RoundedCornerShape(18.dp))
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -298,9 +320,8 @@ fun VoucherCard(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .combinedClickable(
-                                    onClick = {},
-                                    onLongClick = { onLineLongPress(idx, item) }
+                                .recordLongPress(
+                                    onLongPress = { onLineLongPress(idx, item) }
                                 )
                                 .padding(vertical = 4.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -313,7 +334,7 @@ fun VoucherCard(
                                 fontSize = 15.sp
                             )
                             Text(
-                                text = "= ${numFormat.format(item.a)} Ks",
+                                text = "= ${numFormat.format(item.a)}",
                                 color = Color(0xFF235347),
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 14.sp
@@ -326,7 +347,7 @@ fun VoucherCard(
                 }
             }
 
-            // Footer: စုစုပေါင်း ကျသင့်ငွေ : total with print, share, copy icons
+            // Footer: စုစုပေါင်း : total with print, share, copy icons
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -335,7 +356,7 @@ fun VoucherCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "စုစုပေါင်း ကျသင့်ငွေ : ${numFormat.format(voucher.totalAmount)} Ks",
+                    text = "စုစုပေါင်း : ${numFormat.format(voucher.totalAmount)}",
                     color = LuckyLime,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
@@ -361,6 +382,7 @@ fun VoucherCard(
 }
 
 private fun buildReceiptText(voucher: Voucher): String {
+    val numFormat = NumberFormat.getNumberInstance(Locale.US)
     val sb = StringBuilder()
     sb.appendLine("=== Lucky2d ဘောင်ချာ ===")
     sb.appendLine("အမှတ် : No.${voucher.no}")
@@ -369,10 +391,10 @@ private fun buildReceiptText(voucher: Voucher): String {
     sb.appendLine("ထိုးသူ : ${voucher.agent} (ID: ${voucher.agentId})")
     sb.appendLine("--------------------------")
     voucher.items.forEachIndexed { i, itm ->
-        sb.appendLine("${i + 1}. ${itm.n} = ${itm.a} Ks")
+        sb.appendLine("${i + 1}. ${itm.n} = ${numFormat.format(itm.a)}")
     }
     sb.appendLine("--------------------------")
-    sb.appendLine("စုစုပေါင်း : ${voucher.totalAmount} Ks")
+    sb.appendLine("စုစုပေါင်း : ${numFormat.format(voucher.totalAmount)}")
     sb.appendLine("==========================")
     return sb.toString()
 }

@@ -29,6 +29,9 @@ import com.example.data.Session
 import com.example.data.WinRecord
 import com.example.ui.MainViewModel
 import com.example.ui.components.AppHeader
+import com.example.ui.components.DeleteConfirmDialog
+import com.example.ui.components.RecordActionMenuDialog
+import com.example.ui.components.recordLongPress
 import com.example.ui.theme.*
 
 @Composable
@@ -51,6 +54,22 @@ fun SettingsScreen(
     var showAddSessionDialog by remember { mutableStateOf(false) }
     var showAddWinDialog by remember { mutableStateOf(false) }
     var showResetConfirmDialog by remember { mutableStateOf(false) }
+    var resetConfirmationText by remember { mutableStateOf("") }
+
+    // Session long-press management
+    var sessionToManage by remember { mutableStateOf<Session?>(null) }
+    var sessionToEdit by remember { mutableStateOf<Session?>(null) }
+    var sessionToDelete by remember { mutableStateOf<Session?>(null) }
+
+    // Win long-press management
+    var winToManage by remember { mutableStateOf<WinRecord?>(null) }
+    var winToEdit by remember { mutableStateOf<WinRecord?>(null) }
+    var winToDelete by remember { mutableStateOf<WinRecord?>(null) }
+
+    // Blocked long-press management
+    var blockedToManage by remember { mutableStateOf<String?>(null) }
+    var blockedToEdit by remember { mutableStateOf<String?>(null) }
+    var blockedToDelete by remember { mutableStateOf<String?>(null) }
 
     // Password fields
     var currentPass by remember { mutableStateOf("") }
@@ -216,6 +235,7 @@ fun SettingsScreen(
                                             .clip(RoundedCornerShape(8.dp))
                                             .background(LuckyDanger.copy(alpha = 0.2f))
                                             .border(1.dp, LuckyDanger, RoundedCornerShape(8.dp))
+                                            .recordLongPress(onLongPress = { blockedToManage = num })
                                             .padding(horizontal = 8.dp, vertical = 4.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -227,7 +247,7 @@ fun SettingsScreen(
                                             tint = LuckyDanger,
                                             modifier = Modifier
                                                 .size(16.dp)
-                                                .clickable { viewModel.removeBlockedNumber(num) }
+                                                .clickable { blockedToDelete = num }
                                         )
                                     }
                                 }
@@ -277,6 +297,7 @@ fun SettingsScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .background(LuckyCardDark, RoundedCornerShape(10.dp))
+                                    .recordLongPress(onLongPress = { sessionToManage = s })
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
@@ -345,6 +366,7 @@ fun SettingsScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .recordLongPress(onLongPress = { winToManage = win })
                                         .padding(horizontal = 10.dp, vertical = 6.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
@@ -509,29 +531,167 @@ fun SettingsScreen(
             )
         }
 
-        // Reset Confirm Dialog
+        // Reset Confirm Dialog (Change 2: require typing DELETE or confirming twice)
         if (showResetConfirmDialog) {
             AlertDialog(
-                onDismissRequest = { showResetConfirmDialog = false },
+                onDismissRequest = {
+                    showResetConfirmDialog = false
+                    resetConfirmationText = ""
+                },
                 containerColor = LuckyCard,
                 shape = RoundedCornerShape(18.dp),
-                title = { Text("အတည်ပြုပါ", color = Color.White) },
-                text = { Text("အချက်အလက်အားလုံး ဖျက်မည်မှာ သေချာပါသလား? (All data will be reset)", color = LuckyTextSecondary) },
+                title = { Text("စာရင်းအားလုံး ရှင်းလင်းမည်", color = LuckyDanger, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "အချက်အလက်အားလုံး ဖျက်မည်မှာ သေချာပါသလား? အတည်ပြုရန် အောက်တွင် 'DELETE' ဟု ရိုက်ထည့်ပါ:",
+                            color = LuckyTextSecondary,
+                            fontSize = 13.sp
+                        )
+                        OutlinedTextField(
+                            value = resetConfirmationText,
+                            onValueChange = { resetConfirmationText = it },
+                            placeholder = { Text("DELETE", color = LuckyTextMuted) },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = LuckyDanger,
+                                unfocusedBorderColor = LuckyBorder,
+                                focusedTextColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth().testTag("confirm_delete_all_input")
+                        )
+                    }
+                },
                 confirmButton = {
                     Button(
                         onClick = {
                             viewModel.resetAllData()
                             showResetConfirmDialog = false
+                            resetConfirmationText = ""
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = LuckyDanger, contentColor = Color.White)
+                        enabled = resetConfirmationText.trim() == "DELETE",
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = LuckyDanger,
+                            contentColor = Color.White,
+                            disabledContainerColor = LuckyDanger.copy(alpha = 0.3f),
+                            disabledContentColor = Color.White.copy(alpha = 0.5f)
+                        ),
+                        modifier = Modifier.testTag("confirm_reset_button")
                     ) {
-                        Text("ဖျက်မည် (Reset)")
+                        Text("သေချာသည် (Confirm)")
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showResetConfirmDialog = false }) {
-                        Text("မလုပ်တော့ပါ", color = Color.White)
+                    TextButton(onClick = {
+                        showResetConfirmDialog = false
+                        resetConfirmationText = ""
+                    }) {
+                        Text("မဖျက်ပါ", color = LuckyTextSecondary)
                     }
+                }
+            )
+        }
+
+        // Session Actions Menu
+        sessionToManage?.let { s ->
+            RecordActionMenuDialog(
+                title = "အပိုင်း: ${s.name}",
+                onDismiss = { sessionToManage = null },
+                onEdit = { sessionToEdit = s },
+                onDelete = { sessionToDelete = s }
+            )
+        }
+
+        // Edit Session Dialog
+        sessionToEdit?.let { s ->
+            EditSessionDialog(
+                session = s,
+                onDismiss = { sessionToEdit = null },
+                onSave = { name, rate, mult ->
+                    viewModel.updateSession(s.name, Session(name, rate, mult))
+                    sessionToEdit = null
+                }
+            )
+        }
+
+        // Delete Session Confirm Dialog
+        sessionToDelete?.let { s ->
+            DeleteConfirmDialog(
+                itemName = "အပိုင်း '${s.name}'",
+                onDismiss = { sessionToDelete = null },
+                onConfirm = {
+                    viewModel.deleteSession(s.name)
+                    sessionToDelete = null
+                }
+            )
+        }
+
+        // Win Record Actions Menu
+        winToManage?.let { win ->
+            RecordActionMenuDialog(
+                title = "ထွက်ဂဏန်း: ${win.n} (${win.session})",
+                onDismiss = { winToManage = null },
+                onEdit = { winToEdit = win },
+                onDelete = { winToDelete = win }
+            )
+        }
+
+        // Edit Win Dialog
+        winToEdit?.let { win ->
+            EditWinDialog(
+                winRecord = win,
+                sessions = sessions,
+                onDismiss = { winToEdit = null },
+                onSave = { date, sess, num ->
+                    viewModel.updateWinRecord(win, WinRecord(date, sess, num))
+                    winToEdit = null
+                }
+            )
+        }
+
+        // Delete Win Confirm Dialog
+        winToDelete?.let { win ->
+            DeleteConfirmDialog(
+                itemName = "ထွက်ဂဏန်း ${win.date} (${win.session}) - ${win.n}",
+                onDismiss = { winToDelete = null },
+                onConfirm = {
+                    viewModel.deleteWinRecord(win)
+                    winToDelete = null
+                }
+            )
+        }
+
+        // Blocked Number Actions Menu
+        blockedToManage?.let { num ->
+            RecordActionMenuDialog(
+                title = "မရဂဏန်း: $num",
+                onDismiss = { blockedToManage = null },
+                onEdit = { blockedToEdit = num },
+                onDelete = { blockedToDelete = num }
+            )
+        }
+
+        // Edit Blocked Dialog
+        blockedToEdit?.let { num ->
+            EditBlockedDialog(
+                blockedNumber = num,
+                onDismiss = { blockedToEdit = null },
+                onSave = { newNum ->
+                    viewModel.editBlockedNumber(num, newNum)
+                    blockedToEdit = null
+                }
+            )
+        }
+
+        // Delete Blocked Confirm Dialog
+        blockedToDelete?.let { num ->
+            DeleteConfirmDialog(
+                itemName = "မရဂဏန်း '$num'",
+                onDismiss = { blockedToDelete = null },
+                onConfirm = {
+                    viewModel.removeBlockedNumber(num)
+                    blockedToDelete = null
                 }
             )
         }
@@ -681,6 +841,199 @@ fun AddWinDialog(
                 colors = ButtonDefaults.buttonColors(containerColor = LuckyLime, contentColor = LuckyBg)
             ) {
                 Text("သိမ်းမည်")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("မလုပ်တော့ပါ", color = Color.White) }
+        }
+    )
+}
+
+@Composable
+fun EditSessionDialog(
+    session: Session,
+    onDismiss: () -> Unit,
+    onSave: (name: String, rate: Double, mult: Double) -> Unit
+) {
+    var name by remember { mutableStateOf(session.name) }
+    var rateStr by remember { mutableStateOf(session.rate.toInt().toString()) }
+    var multStr by remember { mutableStateOf(session.mult.toInt().toString()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LuckyCard,
+        shape = RoundedCornerShape(18.dp),
+        title = { Text("အပိုင်း ပြင်ဆင်မည် (Edit Session)", color = Color.White, fontSize = 16.sp) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("အပိုင်း အမည်") },
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LuckyLime, focusedTextColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = rateStr,
+                        onValueChange = { rateStr = it },
+                        label = { Text("ကော် (%)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LuckyLime, focusedTextColor = Color.White),
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = multStr,
+                        onValueChange = { multStr = it },
+                        label = { Text("အဆ") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LuckyLime, focusedTextColor = Color.White),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (name.isNotBlank()) {
+                        val rate = rateStr.toDoubleOrNull() ?: session.rate
+                        val mult = multStr.toDoubleOrNull() ?: session.mult
+                        onSave(name.trim(), rate, mult)
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = LuckyLime, contentColor = LuckyBg)
+            ) {
+                Text("သိမ်းမည် (Save)")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("မလုပ်တော့ပါ", color = Color.White) }
+        }
+    )
+}
+
+@Composable
+fun EditWinDialog(
+    winRecord: WinRecord,
+    sessions: List<Session>,
+    onDismiss: () -> Unit,
+    onSave: (date: String, session: String, number: String) -> Unit
+) {
+    var date by remember { mutableStateOf(winRecord.date) }
+    var selectedSessionName by remember { mutableStateOf(winRecord.session) }
+    var number by remember { mutableStateOf(winRecord.n) }
+    var errorMsg by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LuckyCard,
+        shape = RoundedCornerShape(18.dp),
+        title = { Text("ထွက်ဂဏန်း ပြင်ဆင်မည် (Edit Win)", color = Color.White, fontSize = 16.sp) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = date,
+                    onValueChange = { date = it },
+                    label = { Text("ရက်စွဲ") },
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LuckyLime, focusedTextColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = selectedSessionName,
+                    onValueChange = { selectedSessionName = it },
+                    label = { Text("အပိုင်း") },
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LuckyLime, focusedTextColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = number,
+                    onValueChange = {
+                        if (it.length <= 2) {
+                            number = it
+                            errorMsg = ""
+                        }
+                    },
+                    label = { Text("၂ လုံးဂဏန်း (00-99)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LuckyLime, focusedTextColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (errorMsg.isNotEmpty()) {
+                    Text(errorMsg, color = LuckyDanger, fontSize = 12.sp)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (number.length != 2 || !number.all { it.isDigit() }) {
+                        errorMsg = "ဂဏန်း ၂ လုံး ဖြစ်ရပါမည်"
+                    } else if (date.isBlank() || selectedSessionName.isBlank()) {
+                        errorMsg = "ရက်စွဲနှင့် အပိုင်း ဖြည့်စွက်ပါ"
+                    } else {
+                        onSave(date.trim(), selectedSessionName.trim(), number.trim())
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = LuckyLime, contentColor = LuckyBg)
+            ) {
+                Text("သိမ်းမည် (Save)")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("မလုပ်တော့ပါ", color = Color.White) }
+        }
+    )
+}
+
+@Composable
+fun EditBlockedDialog(
+    blockedNumber: String,
+    onDismiss: () -> Unit,
+    onSave: (newNumber: String) -> Unit
+) {
+    var num by remember { mutableStateOf(blockedNumber) }
+    var errorMsg by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LuckyCard,
+        shape = RoundedCornerShape(18.dp),
+        title = { Text("မရဂဏန်း ပြင်ဆင်မည်", color = Color.White, fontSize = 16.sp) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = num,
+                    onValueChange = {
+                        if (it.length <= 2) {
+                            num = it
+                            errorMsg = ""
+                        }
+                    },
+                    label = { Text("၂ လုံးဂဏန်း (00-99)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LuckyLime, focusedTextColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (errorMsg.isNotEmpty()) {
+                    Text(errorMsg, color = LuckyDanger, fontSize = 12.sp)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (num.length != 2 || !num.all { it.isDigit() }) {
+                        errorMsg = "ဂဏန်း ၂ လုံး ဖြစ်ရပါမည်"
+                    } else {
+                        onSave(num.trim())
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = LuckyLime, contentColor = LuckyBg)
+            ) {
+                Text("သိမ်းမည် (Save)")
             }
         },
         dismissButton = {

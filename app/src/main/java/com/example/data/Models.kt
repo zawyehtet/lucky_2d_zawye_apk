@@ -72,3 +72,12 @@ data class AppSettings(
     val guarantor: String = "",
     val brakeLimit: Long = 50000L
 )
+
+data class AgentSummaryData(
+    val totalBet: Long,
+    val commission: Long,
+    val netAmount: Long,
+    val voucherCount: Int,
+    val payout: Long
+)
+

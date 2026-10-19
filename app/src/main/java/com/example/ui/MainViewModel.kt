@@ -420,6 +420,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         showToast("တင်ကွက် (${layoffItems.size} ခု ၊ $totalLayoff) တင်ပြီးပါပြီ")
     }
 
+    // Layoff Item & Batch Management
+    fun deleteLayoffRecord(recordId: Long) {
+        val updated = _layoffs.value.filter { it.id != recordId }
+        _layoffs.value = updated
+        repository.saveLayoffs(updated)
+        showToast("တင်ကွက်မှတ်တမ်း ဖျက်ပြီးပါပြီ")
+    }
+
+    fun deleteLayoffItem(recordId: Long, itemIndex: Int) {
+        val updated = _layoffs.value.mapNotNull { rec ->
+            if (rec.id == recordId) {
+                val newItems = rec.items.toMutableList()
+                if (itemIndex in newItems.indices) {
+                    newItems.removeAt(itemIndex)
+                }
+                if (newItems.isEmpty()) {
+                    null
+                } else {
+                    rec.copy(items = newItems, total = newItems.sumOf { it.a })
+                }
+            } else rec
+        }
+        _layoffs.value = updated
+        repository.saveLayoffs(updated)
+        showToast("တင်ကွက် ဖျက်ပြီးပါပြီ")
+    }
+
+    fun editLayoffItem(recordId: Long, itemIndex: Int, newAmount: Long) {
+        val updated = _layoffs.value.map { rec ->
+            if (rec.id == recordId) {
+                val newItems = rec.items.toMutableList()
+                if (itemIndex in newItems.indices) {
+                    newItems[itemIndex] = newItems[itemIndex].copy(a = newAmount)
+                }
+                rec.copy(items = newItems, total = newItems.sumOf { it.a })
+            } else rec
+        }
+        _layoffs.value = updated
+        repository.saveLayoffs(updated)
+        showToast("တင်ကွက် ပြင်ဆင်ပြီးပါပြီ")
+    }
+
     // Settlement
     fun getWinningNumberForCurrentSession(): String {
         return _wins.value.firstOrNull {
@@ -437,31 +479,79 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         showToast("ထွက်ဂဏန်း ($n) သိမ်းဆည်းပြီးပါပြီ")
     }
 
+    fun updateWinRecord(oldRecord: WinRecord, newRecord: WinRecord) {
+        val updated = _wins.value.map { if (it.date == oldRecord.date && it.session == oldRecord.session) newRecord else it }
+        _wins.value = updated
+        repository.saveWins(updated)
+        showToast("ထွက်ဂဏန်း ပြင်ဆင်ပြီးပါပြီ")
+    }
+
+    fun deleteWinRecord(record: WinRecord) {
+        val updated = _wins.value.filterNot { it.date == record.date && it.session == record.session }
+        _wins.value = updated
+        repository.saveWins(updated)
+        showToast("ထွက်ဂဏန်း ဖျက်ပြီးပါပြီ")
+    }
+
+    // CHANGE 4: Commission must exclude layoff amounts
     fun calculateSettlement(winningNum: String): SettledCalculation {
         val vouchers = getFilteredVouchers()
-        val totalRetained = getTotalRetainedMoney()
+        val layoffs = getFilteredLayoffs()
 
-        // Commission = sum of (voucher total * agent rate / 100)
+        val totalPerNum = mutableMapOf<String, Long>()
+        vouchers.forEach { v ->
+            v.items.forEach { item ->
+                totalPerNum[item.n] = (totalPerNum[item.n] ?: 0L) + item.a
+            }
+        }
+
+        val layoffPerNum = mutableMapOf<String, Long>()
+        layoffs.forEach { l ->
+            l.items.forEach { item ->
+                layoffPerNum[item.n] = (layoffPerNum[item.n] ?: 0L) + item.a
+            }
+        }
+
+        val retainedPerNum = mutableMapOf<String, Long>()
+        for (i in 0..99) {
+            val numStr = "%02d".format(i)
+            val tot = totalPerNum[numStr] ?: 0L
+            val lay = layoffPerNum[numStr] ?: 0L
+            retainedPerNum[numStr] = (tot - lay).coerceAtLeast(0L)
+        }
+
+        val totalRetained = retainedPerNum.values.sum()
+
         val agentMap = _agents.value.associateBy { it.id }
         var totalCommission = 0.0
-        vouchers.forEach { v ->
-            val ag = agentMap[v.agentId] ?: _agents.value.firstOrNull { it.name == v.agent }
-            val rate = ag?.rate ?: 15.0
-            totalCommission += (v.totalAmount * (rate / 100.0))
+
+        val vouchersByAgent = vouchers.groupBy { it.agentId }
+        for ((agentId, agentVouchers) in vouchersByAgent) {
+            val ag = agentMap[agentId] ?: _agents.value.firstOrNull { it.name == agentVouchers.firstOrNull()?.agent }
+            val rate = ag?.rate ?: 0.0
+            var agentCommissionBase = 0.0
+            agentVouchers.forEach { v ->
+                v.items.forEach { item ->
+                    val tot = totalPerNum[item.n] ?: 0L
+                    if (tot > 0L) {
+                        val ret = retainedPerNum[item.n] ?: 0L
+                        val scaled = item.a.toDouble() * (ret.toDouble() / tot.toDouble())
+                        agentCommissionBase += scaled
+                    }
+                }
+            }
+            totalCommission += agentCommissionBase * (rate / 100.0)
         }
 
         val commLong = totalCommission.toLong()
         val retainedNet = (totalRetained - commLong).coerceAtLeast(0L)
 
-        // Session multiplier (default 80)
+        // Session multiplier: if no multiplier is set, treat the payout as 0 (Change 3)
         val sess = _sessions.value.firstOrNull { it.name == _selectedSession.value }
-        val mult = sess?.mult ?: 80.0
+        val mult = sess?.mult ?: 0.0
 
-        // Payout = retained net amount on winning number * multiplier
-        val summaries = getAggregatedNumbers()
-        val winItem = summaries.firstOrNull { it.n == winningNum }
-        val winningRetained = winItem?.netAmount ?: 0L
-        val payout = (winningRetained * mult).toLong()
+        val winningRetained = retainedPerNum[winningNum] ?: 0L
+        val payout = if (mult > 0.0) (winningRetained * mult).toLong() else 0L
 
         val profitLoss = retainedNet - payout
 
@@ -474,6 +564,66 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             winningRetained = winningRetained,
             payout = payout,
             profitLoss = profitLoss
+        )
+    }
+
+    // CHANGE 4: Agent calculation excluding layoff amounts for agent card
+    fun getAgentSummaryData(agent: Agent, winNum: String): AgentSummaryData {
+        val vouchers = getFilteredVouchers().filter { it.agentId == agent.id || it.agent == agent.name }
+        val allVouchers = getFilteredVouchers()
+        val layoffs = getFilteredLayoffs()
+
+        val totalPerNum = mutableMapOf<String, Long>()
+        allVouchers.forEach { v ->
+            v.items.forEach { item ->
+                totalPerNum[item.n] = (totalPerNum[item.n] ?: 0L) + item.a
+            }
+        }
+
+        val layoffPerNum = mutableMapOf<String, Long>()
+        layoffs.forEach { l ->
+            l.items.forEach { item ->
+                layoffPerNum[item.n] = (layoffPerNum[item.n] ?: 0L) + item.a
+            }
+        }
+
+        val retainedPerNum = mutableMapOf<String, Long>()
+        for (i in 0..99) {
+            val numStr = "%02d".format(i)
+            val tot = totalPerNum[numStr] ?: 0L
+            val lay = layoffPerNum[numStr] ?: 0L
+            retainedPerNum[numStr] = (tot - lay).coerceAtLeast(0L)
+        }
+
+        var totalBet = 0L
+        var agentRetainedTotal = 0.0
+        var agentRetainedWin = 0.0
+
+        vouchers.forEach { v ->
+            v.items.forEach { item ->
+                totalBet += item.a
+                val tot = totalPerNum[item.n] ?: 0L
+                if (tot > 0L) {
+                    val ret = retainedPerNum[item.n] ?: 0L
+                    val scaled = item.a.toDouble() * (ret.toDouble() / tot.toDouble())
+                    agentRetainedTotal += scaled
+                    if (winNum.isNotEmpty() && item.n == winNum) {
+                        agentRetainedWin += scaled
+                    }
+                }
+            }
+        }
+
+        val commAmount = (agentRetainedTotal * (agent.rate / 100.0)).toLong()
+        val netAmount = (agentRetainedTotal.toLong() - commAmount).coerceAtLeast(0L)
+        val payout = if (agent.mult > 0.0 && winNum.isNotEmpty()) (agentRetainedWin * agent.mult).toLong() else 0L
+
+        return AgentSummaryData(
+            totalBet = totalBet,
+            commission = commAmount,
+            netAmount = netAmount,
+            voucherCount = vouchers.size,
+            payout = payout
         )
     }
 
@@ -502,6 +652,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         showToast("စာရင်းချုပ် မှတ်တမ်းများကို ရှင်းထုတ်ပြီးပါပြီ")
     }
 
+    fun deleteSettledRecord(recordId: Long) {
+        val updated = _settled.value.filter { it.id != recordId }
+        _settled.value = updated
+        repository.saveSettled(updated)
+        showToast("စာရင်းချုပ်မှတ်တမ်း ဖျက်ပြီးပါပြီ")
+    }
+
     // Blocked numbers
     fun addBlockedNumbers(nums: List<String>) {
         val set = _blocked.value.toMutableSet()
@@ -509,6 +666,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _blocked.value = set
         repository.saveBlocked(set)
         showToast("မရဂဏန်းများ ထည့်သွင်းပြီးပါပြီ")
+    }
+
+    fun editBlockedNumber(oldNum: String, newNum: String) {
+        val set = _blocked.value.toMutableSet()
+        set.remove(oldNum)
+        if (newNum.length == 2 && newNum.all { it.isDigit() }) {
+            set.add(newNum)
+        }
+        _blocked.value = set
+        repository.saveBlocked(set)
+        showToast("မရဂဏန်း ပြင်ဆင်ပြီးပါပြီ")
     }
 
     fun removeBlockedNumber(num: String) {
@@ -528,7 +696,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val updated = _sessions.value + Session(name.trim(), rate, mult)
         _sessions.value = updated
         repository.saveSessions(updated)
+        if (_selectedSession.value.isEmpty()) {
+            _selectedSession.value = name.trim()
+        }
         showToast("အပိုင်း အသစ် ထည့်ပြီးပါပြီ")
+    }
+
+    fun updateSession(oldName: String, updatedSession: Session) {
+        val updated = _sessions.value.map { if (it.name == oldName) updatedSession else it }
+        _sessions.value = updated
+        repository.saveSessions(updated)
+        if (_selectedSession.value == oldName) {
+            _selectedSession.value = updatedSession.name
+        }
+        showToast("အပိုင်း ပြင်ဆင်ပြီးပါပြီ")
+    }
+
+    fun deleteSession(name: String) {
+        val updated = _sessions.value.filter { it.name != name }
+        _sessions.value = updated
+        repository.saveSessions(updated)
+        if (_selectedSession.value == name) {
+            _selectedSession.value = updated.firstOrNull()?.name ?: ""
+        }
+        showToast("အပိုင်း ဖျက်ပြီးပါပြီ")
     }
 
     // Settings

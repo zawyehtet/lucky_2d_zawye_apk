@@ -21,8 +21,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.SettledRecord
 import com.example.ui.MainViewModel
 import com.example.ui.components.AppHeader
+import com.example.ui.components.DeleteConfirmDialog
+import com.example.ui.components.EmptyListPlaceholder
+import com.example.ui.components.recordLongPress
 import com.example.ui.theme.*
 import java.text.NumberFormat
 import java.util.Locale
@@ -38,6 +42,8 @@ fun SettlementScreen(
     val settledList by viewModel.settled.collectAsState()
 
     var winNumberInput by remember { mutableStateOf("") }
+    var showClearLedgerConfirm by remember { mutableStateOf(false) }
+    var recordToDelete by remember { mutableStateOf<SettledRecord?>(null) }
 
     LaunchedEffect(selectedDate, selectedSession) {
         val existingWin = viewModel.getWinningNumberForCurrentSession()
@@ -147,7 +153,7 @@ fun SettlementScreen(
 
                             if (winNumberInput.length == 2) {
                                 Text(
-                                    text = "ထွက်ဂဏန်းပေါ် လက်ခံငွေ: ${numFormat.format(calc.winningRetained)} Ks",
+                                    text = "ထွက်ဂဏန်းပေါ် လက်ခံငွေ: ${numFormat.format(calc.winningRetained)}",
                                     color = LuckyTextSecondary,
                                     fontSize = 12.sp
                                 )
@@ -175,11 +181,25 @@ fun SettlementScreen(
                             fontSize = 15.sp
                         )
 
-                        SettlementRow("စုစုပေါင်း လက်ခံငွေ (Total Retained)", "${numFormat.format(calc.totalRetained)} Ks", Color.White)
-                        SettlementRow("ကော်မရှင် (Commission)", "-${numFormat.format(calc.commission)} Ks", LuckyDanger)
+                        Text(
+                            text = "တင်ကွက်ပို့ပြီးသော ငွေ ကော်မရှင် မတွက်ပါ",
+                            color = LuckyTextSecondary,
+                            fontSize = 12.sp
+                        )
+
+                        if (calc.multiplier <= 0.0) {
+                            Text(
+                                text = "အဆ သတ်မှတ်ချက် မရှိသေးပါ (လျော်ငွေ ၀)",
+                                color = Color(0xFFFFD54F),
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        SettlementRow("စုစုပေါင်း လက်ခံငွေ (Total Retained)", numFormat.format(calc.totalRetained), Color.White)
+                        SettlementRow("ကော်မရှင် (Commission)", "-${numFormat.format(calc.commission)}", LuckyDanger)
                         Divider(color = LuckyBorder, thickness = 0.5.dp)
-                        SettlementRow("နုပ်ပြီးငွေ (Retained Net)", "${numFormat.format(calc.retainedNet)} Ks", LuckyLime)
-                        SettlementRow("လျော်ကြေး (Payout ${calc.multiplier.toInt()}x)", "-${numFormat.format(calc.payout)} Ks", LuckyDanger)
+                        SettlementRow("နုပ်ပြီးငွေ (Retained Net)", numFormat.format(calc.retainedNet), LuckyLime)
+                        SettlementRow("လျော်ကြေး (Payout ${calc.multiplier.toInt()}x)", "-${numFormat.format(calc.payout)}", LuckyDanger)
                         Divider(color = LuckyBorder, thickness = 1.dp)
 
                         // Profit / Loss
@@ -197,7 +217,7 @@ fun SettlementScreen(
                                 fontSize = 16.sp
                             )
                             Text(
-                                text = "${numFormat.format(calc.profitLoss)} Ks",
+                                text = numFormat.format(calc.profitLoss),
                                 color = plColor,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp
@@ -237,7 +257,7 @@ fun SettlementScreen(
 
                     if (settledList.isNotEmpty()) {
                         TextButton(
-                            onClick = { viewModel.clearSettledLedger() },
+                            onClick = { showClearLedgerConfirm = true },
                             colors = ButtonDefaults.textButtonColors(contentColor = LuckyDanger)
                         ) {
                             Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -251,7 +271,7 @@ fun SettlementScreen(
             if (settledList.isEmpty()) {
                 item {
                     Text(
-                        text = "စာရင်းချုပ်မှတ်တမ်း မရှိသေးပါ",
+                        text = "အချက်အလက် မရှိသေးပါ။ + ကိုနှိပ်ပြီး ထည့်ပါ",
                         color = LuckyTextMuted,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(vertical = 16.dp)
@@ -262,7 +282,10 @@ fun SettlementScreen(
                     Card(
                         shape = RoundedCornerShape(14.dp),
                         colors = CardDefaults.cardColors(containerColor = LuckyCard),
-                        modifier = Modifier.fillMaxWidth().border(1.dp, LuckyBorder, RoundedCornerShape(14.dp))
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .recordLongPress(onLongPress = { recordToDelete = item })
+                            .border(1.dp, LuckyBorder, RoundedCornerShape(14.dp))
                     ) {
                         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Row(
@@ -286,8 +309,8 @@ fun SettlementScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("နုပ်ပြီးငွေ: ${numFormat.format(item.retainedNet)} Ks", color = LuckyTextSecondary, fontSize = 12.sp)
-                                Text("လျော်ငွေ: ${numFormat.format(item.payout)} Ks", color = LuckyDanger, fontSize = 12.sp)
+                                Text("နုပ်ပြီးငွေ: ${numFormat.format(item.retainedNet)}", color = LuckyTextSecondary, fontSize = 12.sp)
+                                Text("လျော်ငွေ: ${numFormat.format(item.payout)}", color = LuckyDanger, fontSize = 12.sp)
                             }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -296,7 +319,7 @@ fun SettlementScreen(
                                 Text("အချိန်: ${item.timestamp}", color = LuckyTextMuted, fontSize = 11.sp)
                                 val plCol = if (item.profitLoss >= 0) LuckyLime else LuckyDanger
                                 Text(
-                                    text = "ရလဒ်: ${numFormat.format(item.profitLoss)} Ks",
+                                    text = "ရလဒ်: ${numFormat.format(item.profitLoss)}",
                                     color = plCol,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp
@@ -306,6 +329,32 @@ fun SettlementScreen(
                     }
                 }
             }
+        }
+
+        // Clear Ledger Confirm Dialog
+        if (showClearLedgerConfirm) {
+            DeleteConfirmDialog(
+                title = "ဖျက်မည်လား?",
+                message = "စာရင်းချုပ်မှတ်တမ်းများ အားလုံးကို ဖျက်မည်လား?",
+                onDismiss = { showClearLedgerConfirm = false },
+                onConfirm = {
+                    viewModel.clearSettledLedger()
+                    showClearLedgerConfirm = false
+                }
+            )
+        }
+
+        // Delete Individual Settled Record Dialog
+        recordToDelete?.let { rec ->
+            DeleteConfirmDialog(
+                title = "ဖျက်မည်လား?",
+                message = "${rec.date} (${rec.session}) စာရင်းချုပ်မှတ်တမ်း ကို ဖျက်မည်လား?",
+                onDismiss = { recordToDelete = null },
+                onConfirm = {
+                    viewModel.deleteSettledRecord(rec.id)
+                    recordToDelete = null
+                }
+            )
         }
     }
 }
