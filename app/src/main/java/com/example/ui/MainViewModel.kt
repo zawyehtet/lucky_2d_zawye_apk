@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.*
-import com.example.logic.PatternAlgorithms
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -31,9 +30,34 @@ enum class Screen {
 
 data class NumberSummary(
     val n: String,
+    val entryCount: Int = 0,
     val totalBet: Long,
     val layoffAmount: Long,
     val netAmount: Long
+)
+
+data class NumberAgentBreakdownItem(
+    val agentId: Int,
+    val agentName: String,
+    val rate: Double,
+    val mult: Double,
+    val entryCount: Int,
+    val betOnNumber: Long,
+    val totalAgentSales: Long,
+    val commissionOnNumber: Long,
+    val totalSalesCommission: Long,
+    val winningPayout: Long
+)
+
+data class RoundSettlementSummary(
+    val date: String,
+    val session: String,
+    val winningNumber: String,
+    val totalBet: Long,
+    val commission: Long,
+    val netAmount: Long,
+    val payout: Long,
+    val profitLoss: Long
 )
 
 data class Agent2DSettlementItem(
@@ -51,16 +75,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = StorageRepository(application)
 
-    // Current date and active session
     private val dateFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    private val displayDateFormatter = SimpleDateFormat("dd MMMM yyyy", Locale.ENGLISH)
     private val timeFormatter = SimpleDateFormat("yyyy.MM.dd/HH:mm:ss", Locale.getDefault())
 
     val todayDate: String = dateFormatter.format(Date())
+    val todayDisplayDate: String = displayDateFormatter.format(Date())
 
     private val _selectedDate = MutableStateFlow(todayDate)
     val selectedDate: StateFlow<String> = _selectedDate.asStateFlow()
 
-    private val _selectedSession = MutableStateFlow("")
+    private val _selectedSession = MutableStateFlow("12.AM")
     val selectedSession: StateFlow<String> = _selectedSession.asStateFlow()
 
     private val _currentScreen = MutableStateFlow(Screen.HOME)
@@ -121,7 +146,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _selectedSession.value = loadedSessions.first().name
             }
         } else {
-            _selectedSession.value = ""
+            _selectedSession.value = "12.AM"
         }
 
         _agents.value = repository.loadAgents()
@@ -212,7 +237,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         if (_blocked.value.contains(item.n)) {
-            showToast("${item.n} သည် မရဂဏန်း (ပိတ်ဂဏန်း) ဖြစ်ပါသည်")
+            showToast("${item.n} သည် မရဂဏန်း ဖြစ်ပါသည်")
             return
         }
         _entryItems.value = _entryItems.value + item
@@ -253,11 +278,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _entryItems.value = emptyList()
     }
 
-    // Save Voucher when "ထိုးရန်" switch is turned on
+    // Requirement 2: Stay on Bet Input View after submitting voucher (do NOT redirect to Vouchers page)
     fun commitCurrentVoucher(): Boolean {
         val currentAgent = _entryAgent.value
         if (currentAgent == null) {
-            showToast("ထိုးသူ (ကော်မရှင်) ရွေးချယ်ပါ")
+            showToast("ထိုးသူ ရွေးချယ်ပါ")
             return false
         }
         val items = _entryItems.value
@@ -286,8 +311,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         repository.saveVouchers(updated)
 
         _entryItems.value = emptyList()
-        showToast("ဘောင်ချာ သိမ်းဆည်းပြီးပါပြီ")
-        navigateTo(Screen.VOUCHERS)
+        showToast("ဘောင်ချာ (No.$nextNo) သိမ်းဆည်းပြီးပါပြီ")
+        // Stay on NumberEntryScreen for continuous entry
         return true
     }
 
@@ -314,7 +339,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val newItems = v.items.toMutableList()
                     newItems.removeAt(itemIndex)
                     if (newItems.isEmpty()) {
-                        // Delete voucher when its last line is removed as per prompt
                         null
                     } else {
                         v.copy(items = newItems)
@@ -335,27 +359,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Aggregations for Numbers Screen and Brake Screen
-    fun getFilteredVouchers(): List<Voucher> {
+    fun getFilteredVouchers(date: String = _selectedDate.value, session: String = _selectedSession.value): List<Voucher> {
         return _vouchers.value.filter {
-            it.date == _selectedDate.value && it.session == _selectedSession.value
+            it.date == date && it.session == session
         }
     }
 
-    fun getFilteredLayoffs(): List<LayoffRecord> {
+    fun getFilteredLayoffs(date: String = _selectedDate.value, session: String = _selectedSession.value): List<LayoffRecord> {
         return _layoffs.value.filter {
-            it.date == _selectedDate.value && it.session == _selectedSession.value
+            it.date == date && it.session == session
         }
     }
 
-    // Total Bet aggregated per number (00 to 99)
+    // Total Bet aggregated per number (00 to 99) with entry count (အကြိမ်ရေ)
     fun getAggregatedNumbers(): List<NumberSummary> {
         val vouchers = getFilteredVouchers()
         val layoffs = getFilteredLayoffs()
 
         val betMap = mutableMapOf<String, Long>()
+        val countMap = mutableMapOf<String, Int>()
         vouchers.forEach { v ->
             v.items.forEach { item ->
                 betMap[item.n] = (betMap[item.n] ?: 0L) + item.a
+                countMap[item.n] = (countMap[item.n] ?: 0) + 1
             }
         }
 
@@ -370,15 +396,123 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         for (i in 0..99) {
             val numStr = "%02d".format(i)
             val total = betMap[numStr] ?: 0L
+            val count = countMap[numStr] ?: 0
             val layoff = layoffMap[numStr] ?: 0L
             val net = (total - layoff).coerceAtLeast(0L)
             if (total > 0 || layoff > 0) {
-                allNumbers.add(NumberSummary(numStr, total, layoff, net))
+                allNumbers.add(NumberSummary(numStr, count, total, layoff, net))
             }
         }
 
-        // Sorted by net/amount descending, then number ascending
+        // Sorted by netAmount descending, then number ascending
         return allNumbers.sortedWith(compareByDescending<NumberSummary> { it.netAmount }.thenBy { it.n })
+    }
+
+    // Requirement 3: Breakdown of each sales agent's performance for a specific 2D number
+    fun getNumberAgentBreakdown(number: String): List<NumberAgentBreakdownItem> {
+        val vouchers = getFilteredVouchers()
+        val sess = _sessions.value.firstOrNull { it.name == _selectedSession.value }
+        val defaultMult = if ((sess?.mult ?: 0.0) > 0.0) sess!!.mult else 80.0
+        val defaultRate = if ((sess?.rate ?: 0.0) > 0.0) sess!!.rate else 15.0
+
+        // Include all registered agents plus any agent name on vouchers
+        val agentById = _agents.value.associateBy { it.id }
+        val result = mutableListOf<NumberAgentBreakdownItem>()
+
+        // Collect all unique agents from _agents and vouchers
+        val processedAgentIds = mutableSetOf<Int>()
+
+        for (agent in _agents.value) {
+            processedAgentIds.add(agent.id)
+            val agentVouchers = vouchers.filter { it.agentId == agent.id || it.agent == agent.name }
+            var betOnNum = 0L
+            var countOnNum = 0
+            var totalSales = 0L
+
+            agentVouchers.forEach { v ->
+                v.items.forEach { item ->
+                    totalSales += item.a
+                    if (item.n == number) {
+                        betOnNum += item.a
+                        countOnNum += 1
+                    }
+                }
+            }
+
+            val effRate = if (agent.rate > 0.0) agent.rate else defaultRate
+            val effMult = if (agent.mult > 0.0) agent.mult else defaultMult
+            val commOnNum = Math.round(betOnNum.toDouble() * (effRate / 100.0))
+            val totalComm = Math.round(totalSales.toDouble() * (effRate / 100.0))
+            val payout = Math.round(betOnNum.toDouble() * effMult)
+
+            if (betOnNum > 0L || totalSales > 0L || _agents.value.isNotEmpty()) {
+                result.add(
+                    NumberAgentBreakdownItem(
+                        agentId = agent.id,
+                        agentName = agent.name,
+                        rate = effRate,
+                        mult = effMult,
+                        entryCount = countOnNum,
+                        betOnNumber = betOnNum,
+                        totalAgentSales = totalSales,
+                        commissionOnNumber = commOnNum,
+                        totalSalesCommission = totalComm,
+                        winningPayout = payout
+                    )
+                )
+            }
+        }
+
+        // Also check if any voucher has an agentId not in _agents
+        val extraVouchers = vouchers.filter { it.agentId !in processedAgentIds }
+        extraVouchers.groupBy { it.agentId to it.agent }.forEach { (pair, vList) ->
+            val (agId, agName) = pair
+            var betOnNum = 0L
+            var countOnNum = 0
+            var totalSales = 0L
+            vList.forEach { v ->
+                v.items.forEach { item ->
+                    totalSales += item.a
+                    if (item.n == number) {
+                        betOnNum += item.a
+                        countOnNum += 1
+                    }
+                }
+            }
+            val commOnNum = Math.round(betOnNum.toDouble() * (defaultRate / 100.0))
+            val totalComm = Math.round(totalSales.toDouble() * (defaultRate / 100.0))
+            val payout = Math.round(betOnNum.toDouble() * defaultMult)
+            result.add(
+                NumberAgentBreakdownItem(
+                    agentId = agId,
+                    agentName = agName,
+                    rate = defaultRate,
+                    mult = defaultMult,
+                    entryCount = countOnNum,
+                    betOnNumber = betOnNum,
+                    totalAgentSales = totalSales,
+                    commissionOnNumber = commOnNum,
+                    totalSalesCommission = totalComm,
+                    winningPayout = payout
+                )
+            )
+        }
+
+        return result.sortedWith(
+            compareByDescending<NumberAgentBreakdownItem> { it.betOnNumber }
+                .thenByDescending { it.totalAgentSales }
+                .thenBy { it.agentId }
+        )
+    }
+
+    // Total winning payout amount for a given winning number on NumbersScreen
+    fun getTotalWinningPayoutForNumber(winNum: String): Long {
+        if (winNum.isBlank()) return 0L
+        val breakdown = getNumberAgentBreakdown(winNum)
+        val agentPayoutSum = breakdown.sumOf { it.winningPayout }
+        if (agentPayoutSum > 0L) return agentPayoutSum
+        val calc = calculateSettlement(winNum)
+        return calc.payout
     }
 
     // Total retained amount for today's session
@@ -509,10 +643,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         showToast("ထွက်ဂဏန်း ဖျက်ပြီးပါပြီ")
     }
 
-    // CHANGE 4: Commission must exclude layoff amounts
-    fun calculateSettlement(winningNum: String): SettledCalculation {
-        val vouchers = getFilteredVouchers()
-        val layoffs = getFilteredLayoffs()
+    // Calculate Settlement for a specific date, session, and winning number
+    // Net Profit/Loss = Total Bet Amount - (Total Commission + Total Payout)
+    fun calculateSettlementForSession(
+        date: String = _selectedDate.value,
+        session: String = _selectedSession.value,
+        winningNum: String
+    ): SettledCalculation {
+        val vouchers = getFilteredVouchers(date, session)
+        val layoffs = getFilteredLayoffs(date, session)
 
         val totalPerNum = mutableMapOf<String, Long>()
         vouchers.forEach { v ->
@@ -538,13 +677,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         val totalRetained = retainedPerNum.values.sum()
 
+        val sess = _sessions.value.firstOrNull { it.name == session }
+        val defaultRate = sess?.rate ?: 15.0
+        val defaultMult = sess?.mult ?: 80.0
+
         val agentMap = _agents.value.associateBy { it.id }
         var totalCommission = 0.0
 
         val vouchersByAgent = vouchers.groupBy { it.agentId }
         for ((agentId, agentVouchers) in vouchersByAgent) {
             val ag = agentMap[agentId] ?: _agents.value.firstOrNull { it.name == agentVouchers.firstOrNull()?.agent }
-            val rate = ag?.rate ?: 0.0
+            val rate = if ((ag?.rate ?: 0.0) > 0.0) ag!!.rate else defaultRate
             var agentCommissionBase = 0.0
             agentVouchers.forEach { v ->
                 v.items.forEach { item ->
@@ -559,23 +702,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             totalCommission += agentCommissionBase * (rate / 100.0)
         }
 
-        val commLong = totalCommission.toLong()
+        val commLong = Math.round(totalCommission)
         val retainedNet = (totalRetained - commLong).coerceAtLeast(0L)
 
-        // Session multiplier: if no multiplier is set, treat the payout as 0 (Change 3)
-        val sess = _sessions.value.firstOrNull { it.name == _selectedSession.value }
-        val mult = sess?.mult ?: 0.0
+        val winningRetained = if (winningNum.isNotEmpty()) (retainedPerNum[winningNum] ?: 0L) else 0L
+        val payout = if (defaultMult > 0.0 && winningNum.isNotEmpty()) {
+            Math.round(winningRetained * defaultMult)
+        } else 0L
 
-        val winningRetained = retainedPerNum[winningNum] ?: 0L
-        val payout = if (mult > 0.0) (winningRetained * mult).toLong() else 0L
-
-        val profitLoss = retainedNet - payout
+        // Net Profit/Loss = Total Bet Amount - (Total Commission + Total Payout)
+        val profitLoss = totalRetained - (commLong + payout)
 
         return SettledCalculation(
             totalRetained = totalRetained,
             commission = commLong,
             retainedNet = retainedNet,
-            multiplier = mult,
+            multiplier = defaultMult,
             winningNumber = winningNum,
             winningRetained = winningRetained,
             payout = payout,
@@ -583,7 +725,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    // CHANGE 4: Agent calculation excluding layoff amounts for agent card
+    fun calculateSettlement(winningNum: String): SettledCalculation {
+        return calculateSettlementForSession(
+            date = _selectedDate.value,
+            session = _selectedSession.value,
+            winningNum = winningNum
+        )
+    }
+
+    // Requirement 4: Round-by-round (အကြိမ်ရေအလိုက်) net profit/loss calculation for selected date
+    fun getRoundSummariesForSelectedDate(): List<RoundSettlementSummary> {
+        val date = _selectedDate.value
+        val sessionNames = (_sessions.value.map { it.name } +
+            _vouchers.value.filter { it.date == date }.map { it.session } +
+            _wins.value.filter { it.date == date }.map { it.session })
+            .filter { it.isNotBlank() }
+            .distinct()
+
+        return sessionNames.map { sessName ->
+            val winNum = _wins.value.firstOrNull { it.date == date && it.session == sessName }?.n ?: ""
+            val calc = calculateSettlementForSession(date = date, session = sessName, winningNum = winNum)
+            RoundSettlementSummary(
+                date = date,
+                session = sessName,
+                winningNumber = winNum,
+                totalBet = calc.totalRetained,
+                commission = calc.commission,
+                netAmount = calc.retainedNet,
+                payout = calc.payout,
+                profitLoss = calc.profitLoss
+            )
+        }
+    }
+
+    // Agent calculation excluding layoff amounts for agent card
     fun getAgentSummaryData(agent: Agent, winNum: String): AgentSummaryData {
         val vouchers = getFilteredVouchers().filter { it.agentId == agent.id || it.agent == agent.name }
         val allVouchers = getFilteredVouchers()
@@ -630,9 +805,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        val commAmount = (agentRetainedTotal * (agent.rate / 100.0)).toLong()
-        val netAmount = (agentRetainedTotal.toLong() - commAmount).coerceAtLeast(0L)
-        val payout = if (agent.mult > 0.0 && winNum.isNotEmpty()) (agentRetainedWin * agent.mult).toLong() else 0L
+        val commAmount = Math.round(agentRetainedTotal * (agent.rate / 100.0))
+        val netAmount = (Math.round(agentRetainedTotal) - commAmount).coerceAtLeast(0L)
+        val payout = if (agent.mult > 0.0 && winNum.isNotEmpty()) Math.round(agentRetainedWin * agent.mult) else 0L
 
         return AgentSummaryData(
             totalBet = totalBet,
@@ -662,7 +837,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val payout = if (winNum.isNotEmpty() && agent.mult > 0.0) {
                 Math.round(winBetAmount.toDouble() * agent.mult)
             } else 0L
-            val profitLoss = netAmount - payout
+            // Net Profit/Loss = Total Bet Amount - (Total Commission + Total Payout)
+            val profitLoss = totalBet - (commission + payout)
             Agent2DSettlementItem(
                 agent = agent,
                 voucherCount = agentVouchers.size,
@@ -739,7 +915,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Sessions
     fun addSession(name: String, rate: Double, mult: Double) {
         if (_sessions.value.any { it.name.equals(name, ignoreCase = true) }) {
-            showToast("အပိုင်း အမည် ထပ်နေပါသည်")
+            showToast("အကြိမ်ရေ အမည် ထပ်နေပါသည်")
             return
         }
         val updated = _sessions.value + Session(name.trim(), rate, mult)
@@ -748,7 +924,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_selectedSession.value.isEmpty()) {
             _selectedSession.value = name.trim()
         }
-        showToast("အပိုင်း အသစ် ထည့်ပြီးပါပြီ")
+        showToast("အကြိမ်ရေ အသစ် ထည့်ပြီးပါပြီ")
     }
 
     fun updateSession(oldName: String, updatedSession: Session) {
@@ -758,7 +934,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_selectedSession.value == oldName) {
             _selectedSession.value = updatedSession.name
         }
-        showToast("အပိုင်း ပြင်ဆင်ပြီးပါပြီ")
+        showToast("အကြိမ်ရေ ပြင်ဆင်ပြီးပါပြီ")
     }
 
     fun deleteSession(name: String) {
@@ -768,7 +944,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_selectedSession.value == name) {
             _selectedSession.value = updated.firstOrNull()?.name ?: ""
         }
-        showToast("အပိုင်း ဖျက်ပြီးပါပြီ")
+        showToast("အကြိမ်ရေ ဖျက်ပြီးပါပြီ")
     }
 
     // Settings

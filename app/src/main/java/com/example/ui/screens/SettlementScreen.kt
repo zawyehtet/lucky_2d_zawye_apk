@@ -1,20 +1,17 @@
 package com.example.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,484 +20,261 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.SettledRecord
 import com.example.ui.Agent2DSettlementItem
 import com.example.ui.MainViewModel
-import com.example.ui.components.AppHeader
-import com.example.ui.components.DeleteConfirmDialog
-import com.example.ui.components.EmptyListPlaceholder
-import com.example.ui.components.ShareHelper
-import com.example.ui.components.fmt
-import com.example.ui.components.recordLongPress
+import com.example.ui.RoundSettlementSummary
+import com.example.ui.Screen
+import com.example.ui.components.*
 import com.example.ui.theme.*
+import kotlin.math.abs
 
 @Composable
-fun SettlementScreen(
-    viewModel: MainViewModel,
-    modifier: Modifier = Modifier
-) {
+fun SettlementScreen(viewModel: MainViewModel) {
+    val context = LocalContext.current
+    val selectedDate by viewModel.selectedDate.collectAsState()
     val selectedSession by viewModel.selectedSession.collectAsState()
     val sessions by viewModel.sessions.collectAsState()
-    val selectedDate by viewModel.selectedDate.collectAsState()
-    val settledList by viewModel.settled.collectAsState()
+    val vouchers by viewModel.vouchers.collectAsState()
+    val layoffs by viewModel.layoffs.collectAsState()
+    val wins by viewModel.wins.collectAsState()
+    val settledRecords by viewModel.settled.collectAsState()
 
-    var winNumberInput by remember { mutableStateOf("") }
-    var showClearLedgerConfirm by remember { mutableStateOf(false) }
+    val savedWin = remember(wins, selectedDate, selectedSession) {
+        viewModel.getWinningNumberForCurrentSession()
+    }
+
+    var winNumInput by remember(savedWin, selectedDate, selectedSession) {
+        mutableStateOf(savedWin)
+    }
+
+    val cleanWin = winNumInput.trim()
+
+    val currentCalculation = remember(vouchers, layoffs, sessions, selectedDate, selectedSession, cleanWin) {
+        viewModel.calculateSettlement(cleanWin)
+    }
+
+    // Round-by-round (အကြိမ်ရေအလိုက်) Profit/Loss Breakdown for the selected date
+    val roundSummaries = remember(vouchers, layoffs, sessions, wins, selectedDate, selectedSession, cleanWin) {
+        val baseRounds = viewModel.getRoundSummariesForSelectedDate()
+        baseRounds.map { r ->
+            if (r.session == selectedSession && cleanWin.length == 2 && cleanWin != r.winningNumber) {
+                val liveCalc = viewModel.calculateSettlementForSession(
+                    date = selectedDate,
+                    session = selectedSession,
+                    winningNum = cleanWin
+                )
+                RoundSettlementSummary(
+                    date = selectedDate,
+                    session = r.session,
+                    winningNumber = cleanWin,
+                    totalBet = liveCalc.totalRetained,
+                    commission = liveCalc.commission,
+                    netAmount = liveCalc.retainedNet,
+                    payout = liveCalc.payout,
+                    profitLoss = liveCalc.profitLoss
+                )
+            } else {
+                r
+            }
+        }
+    }
+
+    val grandTotalBet = remember(roundSummaries) { roundSummaries.sumOf { it.totalBet } }
+    val grandTotalComm = remember(roundSummaries) { roundSummaries.sumOf { it.commission } }
+    val grandTotalPayout = remember(roundSummaries) { roundSummaries.sumOf { it.payout } }
+    val grandTotalProfitLoss = remember(grandTotalBet, grandTotalComm, grandTotalPayout) {
+        grandTotalBet - (grandTotalComm + grandTotalPayout)
+    }
+
     var recordToDelete by remember { mutableStateOf<SettledRecord?>(null) }
+    var showClearAllDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(selectedDate, selectedSession) {
-        val existingWin = viewModel.getWinningNumberForCurrentSession()
-        winNumberInput = existingWin
-    }
-
-    BackHandler {
-        viewModel.goBack()
-    }
-
-    // Calculate settlement values
-    val calc = remember(winNumberInput, selectedDate, selectedSession) {
-        viewModel.calculateSettlement(winNumberInput.trim())
+    fun buildSettlementShareText(): String {
+        val sb = StringBuilder()
+        sb.append("================================\n")
+        sb.append("   ရက်ချုပ် / အမြတ်အရှုံး စာရင်း\n")
+        sb.append("================================\n")
+        sb.append("ရက်စွဲ : $selectedDate\n")
+        sb.append("အချိန် : $selectedSession\n")
+        sb.append("ပေါက်သီး : ${cleanWin.ifEmpty { "-" }}\n")
+        sb.append("--------------------------------\n")
+        sb.append("စုစုပေါင်း ရောင်းကြေး : ${fmt(currentCalculation.totalRetained)}\n")
+        sb.append("ကော်မရှင် : -${fmt(currentCalculation.commission)}\n")
+        sb.append("ကော်နုတ်ပြီး ရောင်းကြေး : ${fmt(currentCalculation.retainedNet)}\n")
+        sb.append("ပေါက်သီး ထိုးကြေး : ${fmt(currentCalculation.winningRetained)}\n")
+        sb.append("စုစုပေါင်း လျော်ကြေး : -${fmt(currentCalculation.payout)}\n")
+        sb.append("--------------------------------\n")
+        val isProfit = currentCalculation.profitLoss >= 0
+        val sign = if (isProfit) "+" else "-"
+        val label = if (isProfit) "အမြတ်" else "အရှုံး"
+        sb.append("အသားတင် ($label) : $sign${fmt(abs(currentCalculation.profitLoss))}\n")
+        if (roundSummaries.isNotEmpty()) {
+            sb.append("--------------------------------\n")
+            sb.append("[အကြိမ်ရေအလိုက် အမြတ် / အရှုံး]\n")
+            roundSummaries.forEach { r ->
+                val rProfit = r.profitLoss >= 0
+                val rSign = if (rProfit) "+${fmt(r.profitLoss)} (အမြတ်)" else "-${fmt(abs(r.profitLoss))} (အရှုံး)"
+                sb.append("• ${r.session} [ပေါက်သီး: ${r.winningNumber.ifEmpty { "-" }}]\n")
+                sb.append("  ရောင်းကြေး: ${fmt(r.totalBet)} | ကော်မရှင်: ${fmt(r.commission)} | လျော်ကြေး: ${fmt(r.payout)}\n")
+                sb.append("  ရလဒ်: $rSign\n")
+            }
+            val gProfit = grandTotalProfitLoss >= 0
+            val gSign = if (gProfit) "+${fmt(grandTotalProfitLoss)} (အမြတ်)" else "-${fmt(abs(grandTotalProfitLoss))} (အရှုံး)"
+            sb.append("စုစုပေါင်း အသားတင် : $gSign\n")
+        }
+        sb.append("================================\n")
+        return sb.toString()
     }
 
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .background(LuckyBg)
     ) {
-        Surface(
-            color = LuckyHeader,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    IconButton(onClick = { viewModel.goBack() }, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
-                    }
-                    Text(
-                        text = "ရက်ချုပ် (Settlement)",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp
-                    )
-                }
-
-                Text(
-                    text = "$selectedDate ($selectedSession)",
-                    color = LuckyLime,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
+        AppHeader(
+            title = "ရက်ချုပ် / အမြတ်အရှုံး စာရင်း",
+            selectedSession = selectedSession,
+            sessions = sessions,
+            onSessionSelected = { viewModel.setSession(it) },
+            onBack = { viewModel.goBack() }
+        )
 
         LazyColumn(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(top = 16.dp, bottom = 40.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .weight(1f)
+                .fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Winning Number Input Card
+            // 1. Winning Number & Quick Link to Per-Agent 2D Settlement
             item {
                 Card(
-                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = LuckyCard),
-                    modifier = Modifier.fillMaxWidth().border(1.dp, LuckyBorder, RoundedCornerShape(16.dp))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = "ထွက်ဂဏန်း (Winning Number)",
-                            color = LuckyTextSecondary,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = winNumberInput,
-                                onValueChange = {
-                                    if (it.length <= 2) {
-                                        winNumberInput = it
-                                        if (it.length == 2) {
-                                            viewModel.setWinningNumber(it)
-                                        }
-                                    }
-                                },
-                                placeholder = { Text("00", color = LuckyTextMuted) },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = LuckyLime,
-                                    unfocusedBorderColor = LuckyBorder,
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.width(90.dp).testTag("winning_number_input")
-                            )
-
-                            if (winNumberInput.length == 2) {
-                                Text(
-                                    text = "ထွက်ဂဏန်းပေါ် လက်ခံငွေ: ${fmt(calc.winningRetained)}",
-                                    color = LuckyTextSecondary,
-                                    fontSize = 12.sp
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Calculation Breakdown Card
-            item {
-                Card(
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = LuckyCard),
-                    modifier = Modifier.fillMaxWidth().border(1.dp, LuckyBorder, RoundedCornerShape(18.dp))
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                 ) {
                     Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text(
-                            text = "စာရင်း အကျဉ်းချုပ်",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-
-                        Text(
-                            text = "တင်ကွက်ပို့ပြီးသော ငွေ ကော်မရှင် မတွက်ပါ",
-                            color = LuckyTextSecondary,
-                            fontSize = 12.sp
-                        )
-
-                        if (calc.multiplier <= 0.0) {
-                            Text(
-                                text = "အဆ သတ်မှတ်ချက် မရှိသေးပါ (လျော်ငွေ ၀)",
-                                color = Color(0xFFFFD54F),
-                                fontSize = 12.sp
-                            )
-                        }
-
-                        SettlementRow("စုစုပေါင်း လက်ခံငွေ (Total Retained)", fmt(calc.totalRetained), Color.White)
-                        SettlementRow("ကော်မရှင် (Commission)", "-${fmt(calc.commission)}", LuckyDanger)
-                        Divider(color = LuckyBorder, thickness = 0.5.dp)
-                        SettlementRow("နုပ်ပြီးငွေ (Retained Net)", fmt(calc.retainedNet), LuckyLime)
-                        SettlementRow("လျော်ကြေး (Payout ${calc.multiplier.toInt()}x)", "-${fmt(calc.payout)}", LuckyDanger)
-                        Divider(color = LuckyBorder, thickness = 1.dp)
-
-                        // Profit / Loss
-                        val plColor = if (calc.profitLoss >= 0) LuckyLime else LuckyDanger
-                        val plLabel = if (calc.profitLoss >= 0) "အမြတ် (Profit)" else "အရှုံး (Loss)"
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = plLabel,
-                                color = plColor,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
-                            )
-                            Text(
-                                text = fmt(calc.profitLoss),
-                                color = plColor,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp
-                            )
+                            Column {
+                                Text(
+                                    text = "ထွက်ဂဏန်း (ပေါက်သီး) ထည့်သွင်းရန်",
+                                    color = LuckyHeader,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "$selectedDate • $selectedSession",
+                                    color = LuckyTextMuted,
+                                    fontSize = 12.sp
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = { viewModel.navigateTo(Screen.AGENT_SETTLEMENT) },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = LuckyHeader),
+                                modifier = Modifier.testTag("open_agent_settlement_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.People,
+                                    contentDescription = "2D စာရင်းချုပ်",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("2D စာရင်းချုပ်", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
 
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Button "စာရင်းချုပ်မည်"
-                        Button(
-                            onClick = {
-                                viewModel.commitSettlement(calc)
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = LuckyLime, contentColor = LuckyBg),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth().height(46.dp).testTag("commit_settlement_btn")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("စာရင်းချုပ်မည် (Settle Ledger)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
-                    }
-                }
-            }
+                            OutlinedTextField(
+                                value = winNumInput,
+                                onValueChange = { input ->
+                                    val digits = input.filter { it.isDigit() }.take(2)
+                                    winNumInput = digits
+                                },
+                                placeholder = { Text("ပေါက်သီး (၀၀-၉၉)", color = LuckyTextMuted, fontSize = 13.sp) },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                textStyle = TextStyle(
+                                    color = LuckyDanger,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace
+                                ),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = LuckyBg,
+                                    unfocusedContainerColor = LuckyBg,
+                                    focusedBorderColor = LuckyHeader,
+                                    unfocusedBorderColor = LuckyBorder
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("settlement_winning_input")
+                            )
 
-            // Settled Records Ledger
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "စာရင်းချုပ် မှတ်တမ်းများ (Ledger)",
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    if (settledList.isNotEmpty()) {
-                        TextButton(
-                            onClick = { showClearLedgerConfirm = true },
-                            colors = ButtonDefaults.textButtonColors(contentColor = LuckyDanger)
-                        ) {
-                            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("ရှင်းထုတ်မည်", fontSize = 12.sp)
-                        }
-                    }
-                }
-            }
-
-            if (settledList.isEmpty()) {
-                item {
-                    Text(
-                        text = "အချက်အလက် မရှိသေးပါ။ + ကိုနှိပ်ပြီး ထည့်ပါ",
-                        color = LuckyTextMuted,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(vertical = 16.dp)
-                    )
-                }
-            } else {
-                itemsIndexed(settledList) { idx, item ->
-                    Card(
-                        shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.cardColors(containerColor = LuckyCard),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .recordLongPress(onLongPress = { recordToDelete = item })
-                            .border(1.dp, LuckyBorder, RoundedCornerShape(14.dp))
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                            Button(
+                                onClick = {
+                                    if (cleanWin.length == 2) {
+                                        viewModel.setWinningNumber(cleanWin)
+                                    } else {
+                                        viewModel.showToast("ဂဏန်း ၂ လုံး အပြည့်ထည့်ပါ")
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = LuckyHeader,
+                                    contentColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .height(54.dp)
+                                    .testTag("save_winning_number_btn")
                             ) {
-                                Text(
-                                    text = "${item.date} (${item.session})",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                                Text(
-                                    text = "ထွက်ဂဏန်း: ${item.winningNumber.ifEmpty { "-" }}",
-                                    color = LuckyLime,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("နုပ်ပြီးငွေ: ${fmt(item.retainedNet)}", color = LuckyTextSecondary, fontSize = 12.sp)
-                                Text("လျော်ငွေ: ${fmt(item.payout)}", color = LuckyDanger, fontSize = 12.sp)
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("အချိန်: ${item.timestamp}", color = LuckyTextMuted, fontSize = 11.sp)
-                                val plCol = if (item.profitLoss >= 0) LuckyLime else LuckyDanger
-                                Text(
-                                    text = "ရလဒ်: ${fmt(item.profitLoss)}",
-                                    color = plCol,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
+                                Icon(Icons.Default.Check, contentDescription = "သိမ်းမည်", modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("ပေါက်သီးသိမ်းမည်", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
                 }
             }
-        }
 
-        // Clear Ledger Confirm Dialog
-        if (showClearLedgerConfirm) {
-            DeleteConfirmDialog(
-                title = "ဖျက်ရန် သေချာပါသလား?",
-                message = "စာရင်းချုပ်မှတ်တမ်းများ အားလုံးကို ဖျက်ရန် သေချာပါသလား?",
-                onDismiss = { showClearLedgerConfirm = false },
-                onConfirm = {
-                    viewModel.clearSettledLedger()
-                    showClearLedgerConfirm = false
-                }
-            )
-        }
-
-        // Delete Individual Settled Record Dialog
-        recordToDelete?.let { rec ->
-            DeleteConfirmDialog(
-                title = "ဖျက်ရန် သေချာပါသလား?",
-                message = "${rec.date} (${rec.session}) စာရင်းချုပ်မှတ်တမ်း ကို ဖျက်ရန် သေချာပါသလား?",
-                onDismiss = { recordToDelete = null },
-                onConfirm = {
-                    viewModel.deleteSettledRecord(rec.id)
-                    recordToDelete = null
-                }
-            )
-        }
-    }
-}
-
-@Composable
-fun SettlementRow(
-    label: String,
-    value: String,
-    valueColor: Color
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(text = label, color = LuckyTextSecondary, fontSize = 13.sp)
-        Text(text = value, color = valueColor, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-    }
-}
-
-@Composable
-fun AgentSettlementScreen(
-    viewModel: MainViewModel,
-    modifier: Modifier = Modifier
-) {
-    val context = LocalContext.current
-    val selectedSession by viewModel.selectedSession.collectAsState()
-    val sessions by viewModel.sessions.collectAsState()
-    val selectedDate by viewModel.selectedDate.collectAsState()
-    val agents by viewModel.agents.collectAsState()
-    val vouchers by viewModel.vouchers.collectAsState()
-    val wins by viewModel.wins.collectAsState()
-
-    val winNum = wins.firstOrNull { it.date == selectedDate && it.session == selectedSession }?.n ?: ""
-
-    BackHandler {
-        viewModel.goBack()
-    }
-
-    val agentSettlementList = remember(agents, vouchers, wins, selectedDate, selectedSession, winNum) {
-        viewModel.getAgent2DSettlementList(winNum)
-    }
-
-    val grandTotalBet = agentSettlementList.sumOf { it.totalBet }
-    val grandCommission = agentSettlementList.sumOf { it.commission }
-    val grandNetAmount = agentSettlementList.sumOf { it.netAmount }
-    val grandWinBet = agentSettlementList.sumOf { it.winBetAmount }
-    val grandPayout = agentSettlementList.sumOf { it.payout }
-    val grandProfitLoss = agentSettlementList.sumOf { it.profitLoss }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(LuckyBg)
-    ) {
-        AppHeader(
-            title = "2D စာရင်းချုပ်",
-            selectedSession = selectedSession,
-            sessions = sessions,
-            onSessionSelected = { viewModel.setSession(it) }
-        )
-
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(top = 12.dp, bottom = 90.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Top bar with Back button, Date, Session, and Winning Number badge
+            // 2. Selected Round Calculation Card (Full-Width)
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = { viewModel.goBack() },
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(LuckyCard, RoundedCornerShape(10.dp))
-                            .border(1.dp, LuckyBorder, RoundedCornerShape(10.dp))
-                    ) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(18.dp))
-                    }
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "နေ့စွဲ : $selectedDate",
-                            color = LuckyTextSecondary,
-                            fontSize = 12.sp
-                        )
-                        Text(
-                            text = "အပိုင်း : ${selectedSession.ifEmpty { "အကြိမ် မရှိသေးပါ" }}",
-                            color = LuckyLime,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .background(LuckyHeader, RoundedCornerShape(12.dp))
-                            .border(1.dp, LuckyLime, RoundedCornerShape(12.dp))
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "ထွက်ဂဏန်း: ${winNum.ifEmpty { "--" }}",
-                            color = LuckyLime,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
-                    }
-                }
-            }
-
-            // Overall 2D Settlement Summary Card across all agents
-            item {
-                val allReportText = buildAllAgents2DSettlementText(
-                    date = selectedDate,
-                    session = selectedSession,
-                    winNum = winNum,
-                    rows = agentSettlementList,
-                    grandTotalBet = grandTotalBet,
-                    grandCommission = grandCommission,
-                    grandNetAmount = grandNetAmount,
-                    grandWinBet = grandWinBet,
-                    grandPayout = grandPayout,
-                    grandProfitLoss = grandProfitLoss
-                )
-
                 Card(
-                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = LuckyCard),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, LuckyBorder, RoundedCornerShape(18.dp))
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                 ) {
                     Column(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Row(
@@ -509,224 +283,457 @@ fun AgentSettlementScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "စုစုပေါင်း 2D စာရင်းချုပ်",
-                                color = LuckyLime,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
+                                text = "လက်ရှိအချိန် စာရင်းချုပ် ($selectedSession)",
+                                color = LuckyHeader,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
                             )
-                            Row {
-                                IconButton(
-                                    onClick = { ShareHelper.copyToClipboard(context, allReportText) },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy All", tint = LuckyLime, modifier = Modifier.size(18.dp))
-                                }
-                                IconButton(
-                                    onClick = { ShareHelper.shareText(context, allReportText) },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(Icons.Default.Share, contentDescription = "Share All", tint = Color.White, modifier = Modifier.size(18.dp))
-                                }
+                            Surface(
+                                color = if (cleanWin.isNotEmpty()) LuckyDanger.copy(alpha = 0.12f) else LuckyCardDark,
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = "ပေါက်သီး: ${cleanWin.ifEmpty { "-" }}",
+                                    color = if (cleanWin.isNotEmpty()) LuckyDanger else LuckyTextMuted,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
                             }
                         }
 
-                        Divider(color = LuckyBorder, thickness = 0.5.dp)
+                        HorizontalDivider(color = LuckyBorder)
 
-                        SettlementRow(
-                            label = "စုစုပေါင်း ထိုးကြေး",
-                            value = fmt(grandTotalBet),
-                            valueColor = Color.White
+                        SettlementMetricRow("စုစုပေါင်း ရောင်းကြေး", fmt(currentCalculation.totalRetained), LuckyTextPrimary)
+                        SettlementMetricRow("ကော်မရှင်", "-${fmt(currentCalculation.commission)}", LuckyWarning)
+                        SettlementMetricRow("ကော်နုတ်ပြီး ရောင်းကြေး", fmt(currentCalculation.retainedNet), LuckyHeader)
+                        SettlementMetricRow(
+                            "ပေါက်သီး (${cleanWin.ifEmpty { "-" }}) ထိုးကြေး",
+                            fmt(currentCalculation.winningRetained),
+                            if (currentCalculation.winningRetained > 0) LuckyDanger else LuckyTextSecondary
                         )
-                        SettlementRow(
-                            label = "စုစုပေါင်း ကော်မရှင်",
-                            value = fmt(grandCommission),
-                            valueColor = LuckyTextSecondary
-                        )
-                        SettlementRow(
-                            label = "ကော်နှုတ်ပြီးငွေ",
-                            value = fmt(grandNetAmount),
-                            valueColor = LuckyLime
-                        )
-                        SettlementRow(
-                            label = "ပေါက်သီး (${winNum.ifEmpty { "-" }})",
-                            value = fmt(grandWinBet),
-                            valueColor = Color.White
-                        )
-                        SettlementRow(
-                            label = "စုစုပေါင်း လျော်ကြေး",
-                            value = fmt(grandPayout),
-                            valueColor = LuckyDanger
+                        SettlementMetricRow(
+                            "လျော်ကြေး (အဆ ${fmt(currentCalculation.multiplier)})",
+                            "-${fmt(currentCalculation.payout)}",
+                            if (currentCalculation.payout > 0) LuckyDanger else LuckyTextSecondary
                         )
 
-                        Divider(color = LuckyBorder, thickness = 1.dp)
+                        HorizontalDivider(color = LuckyBorder)
 
-                        val isProfit = grandProfitLoss >= 0
+                        val isProfit = currentCalculation.profitLoss >= 0
+                        val statusColor = if (isProfit) LuckySuccess else LuckyDanger
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(
-                                    color = if (isProfit) LuckyLime.copy(alpha = 0.12f) else LuckyDanger.copy(alpha = 0.12f),
-                                    shape = RoundedCornerShape(10.dp)
-                                )
+                                .background(statusColor.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
+                                .border(1.dp, statusColor.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Column {
+                                Text(
+                                    text = if (isProfit) "အသားတင် အမြတ်" else "အသားတင် အရှုံး",
+                                    color = statusColor,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                Text(
+                                    text = "ရောင်းကြေး - (ကော်မရှင် + လျော်ကြေး)",
+                                    color = LuckyTextMuted,
+                                    fontSize = 11.sp
+                                )
+                            }
                             Text(
-                                text = if (isProfit) "စုစုပေါင်း အမြတ်" else "စုစုပေါင်း အရှုံး",
-                                color = if (isProfit) LuckyLime else LuckyDanger,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
-                            )
-                            Text(
-                                text = "${if (isProfit) "+" else "-"}${fmt(kotlin.math.abs(grandProfitLoss))}",
-                                color = if (isProfit) LuckyLime else LuckyDanger,
+                                text = "${if (isProfit) "+" else "-"}${fmt(abs(currentCalculation.profitLoss))}",
+                                color = statusColor,
+                                fontSize = 19.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = 16.sp
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+
+                        // Full-width Action Buttons
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    ShareHelper.copyToClipboard(context, buildSettlementShareText())
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                                    .testTag("settlement_copy_btn"),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = LuckyHeader)
+                            ) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = "ကူးယူမည်", modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("ကူးယူမည်", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    ShareHelper.shareText(context, buildSettlementShareText(), "ရက်ချုပ်စာရင်း")
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                                    .testTag("settlement_share_btn"),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = LuckyHeader)
+                            ) {
+                                Icon(Icons.Default.Share, contentDescription = "မျှဝေမည်", modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("မျှဝေမည်", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(
+                                onClick = {
+                                    if (cleanWin.length == 2) {
+                                        viewModel.setWinningNumber(cleanWin)
+                                    }
+                                    viewModel.commitSettlement(currentCalculation)
+                                },
+                                modifier = Modifier
+                                    .weight(1.2f)
+                                    .height(44.dp)
+                                    .testTag("commit_settlement_button"),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = LuckyHeader,
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Icon(Icons.Default.Save, contentDescription = "မှတ်တမ်းတင်မည်", modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("မှတ်တမ်းတင်မည်", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. Round-by-Round (အကြိမ်ရေအလိုက်) Profit/Loss Breakdown & Overall Total Profit/Loss
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("round_breakdown_card"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = LuckyCard),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "အကြိမ်ရေအလိုက် အမြတ် / အရှုံး တွက်ချက်မှု ($selectedDate)",
+                            color = LuckyHeader,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        // Full-Width Table Header
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(LuckyCardDark, RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("အချိန် / ပေါက်သီး", color = LuckyTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1.15f))
+                            Text("ရောင်းကြေး", color = LuckyTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, modifier = Modifier.weight(1f))
+                            Text("ကော်မရှင်", color = LuckyTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, modifier = Modifier.weight(0.95f))
+                            Text("လျော်ကြေး", color = LuckyTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, modifier = Modifier.weight(1f))
+                            Text("အမြတ်/အရှုံး", color = LuckyTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, modifier = Modifier.weight(1.15f))
+                        }
+
+                        roundSummaries.forEach { round ->
+                            val rProfit = round.profitLoss >= 0
+                            val rColor = if (rProfit) LuckySuccess else LuckyDanger
+                            val rSign = if (rProfit) "+" else "-"
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1.15f)) {
+                                    Text(
+                                        text = round.session,
+                                        color = LuckyTextPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "ပေါက်သီး: ${round.winningNumber.ifEmpty { "-" }}",
+                                        color = if (round.winningNumber.isNotEmpty()) LuckyDanger else LuckyTextMuted,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+
+                                Text(
+                                    text = fmt(round.totalBet),
+                                    color = LuckyTextPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontFamily = FontFamily.Monospace,
+                                    textAlign = TextAlign.End,
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                Text(
+                                    text = fmt(round.commission),
+                                    color = LuckyTextSecondary,
+                                    fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    textAlign = TextAlign.End,
+                                    modifier = Modifier.weight(0.95f)
+                                )
+
+                                Text(
+                                    text = fmt(round.payout),
+                                    color = if (round.payout > 0) LuckyDanger else LuckyTextSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontFamily = FontFamily.Monospace,
+                                    textAlign = TextAlign.End,
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                Column(
+                                    modifier = Modifier.weight(1.15f),
+                                    horizontalAlignment = Alignment.End
+                                ) {
+                                    Text(
+                                        text = "$rSign${fmt(abs(round.profitLoss))}",
+                                        color = rColor,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontFamily = FontFamily.Monospace,
+                                        textAlign = TextAlign.End
+                                    )
+                                    Text(
+                                        text = if (rProfit) "အမြတ်" else "အရှုံး",
+                                        color = rColor,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            HorizontalDivider(color = LuckyBorder)
+                        }
+
+                        // Overall Grand Total Profit/Loss across all rounds of the day
+                        val isGrandProfit = grandTotalProfitLoss >= 0
+                        val grandColor = if (isGrandProfit) LuckySuccess else LuckyDanger
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(grandColor.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                .border(1.dp, grandColor.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "တစ်နေ့တာ စုစုပေါင်း (${if (isGrandProfit) "အမြတ်" else "အရှုံး"})",
+                                    color = grandColor,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                Text(
+                                    text = "ရောင်းကြေး ${fmt(grandTotalBet)} | ကော်မရှင် ${fmt(grandTotalComm)} | လျော်ကြေး ${fmt(grandTotalPayout)}",
+                                    color = LuckyTextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Text(
+                                text = "${if (isGrandProfit) "+" else "-"}${fmt(abs(grandTotalProfitLoss))}",
+                                color = grandColor,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace
                             )
                         }
                     }
                 }
             }
 
-            // Per-agent settlement cards
-            if (agentSettlementList.isEmpty()) {
-                item {
-                    EmptyListPlaceholder(
-                        text = "အချက်အလက် မရှိသေးပါ။ + ကိုနှိပ်ပြီး ထည့်ပါ",
-                        modifier = Modifier.padding(vertical = 32.dp)
-                    )
-                }
-            } else {
-                items(agentSettlementList, key = { it.agent.id }) { row ->
-                    val singleText = buildSingleAgent2DSettlementText(
-                        date = selectedDate,
-                        session = selectedSession,
-                        winNum = winNum,
-                        row = row
-                    )
-                    val isCollect = row.profitLoss >= 0
-
-                    Card(
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(containerColor = LuckyCard),
+            // 4. Ledger Records (စာရင်းချုပ် မှတ်တမ်းများ) with Round-by-Round & Overall Profit/Loss
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = LuckyCard),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, LuckyBorder, RoundedCornerShape(18.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            // Agent Header
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "စာရင်းချုပ် မှတ်တမ်းများ (${settledRecords.size})",
+                                color = LuckyHeader,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            if (settledRecords.isNotEmpty()) {
+                                TextButton(
+                                    onClick = { showClearAllDialog = true },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteSweep,
+                                        contentDescription = "မှတ်တမ်းရှင်းမည်",
+                                        tint = LuckyDanger,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("မှတ်တမ်းရှင်းမည်", color = LuckyDanger, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        if (settledRecords.isEmpty()) {
+                            EmptyStateView(message = "သိမ်းဆည်းထားသော စာရင်းချုပ် မှတ်တမ်း မရှိသေးပါ")
+                        } else {
+                            val ledgerGrandTotalBet = settledRecords.sumOf { it.totalRetained }
+                            val ledgerGrandTotalComm = settledRecords.sumOf { it.commission }
+                            val ledgerGrandTotalPayout = settledRecords.sumOf { it.payout }
+                            val ledgerGrandNet = settledRecords.sumOf { it.profitLoss }
+                            val isLedgerProfit = ledgerGrandNet >= 0
+                            val ledgerColor = if (isLedgerProfit) LuckySuccess else LuckyDanger
+
+                            // Overall Ledger Profit/Loss Banner
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(LuckyHeader)
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                    .background(ledgerColor.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                    .border(1.dp, ledgerColor.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(30.dp)
-                                            .clip(CircleShape)
-                                            .background(LuckyBg),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "${row.agent.id}",
-                                            color = LuckyLime,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 12.sp
-                                        )
-                                    }
-                                    Column {
-                                        Text(
-                                            text = row.agent.name,
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp
-                                        )
-                                        Text(
-                                            text = "ကော်: ${fmt(row.agent.rate)}% | အဆ: ${fmt(row.agent.mult)} | ဘောင်ချာ: ${row.voucherCount} စောင်",
-                                            color = LuckyTextSecondary,
-                                            fontSize = 11.sp
-                                        )
-                                    }
+                                Column {
+                                    Text(
+                                        text = "မှတ်တမ်းအားလုံး စုစုပေါင်း (${if (isLedgerProfit) "အမြတ်" else "အရှုံး"})",
+                                        color = ledgerColor,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                    Text(
+                                        text = "ရောင်း ${fmt(ledgerGrandTotalBet)} | ကော် ${fmt(ledgerGrandTotalComm)} | လျော် ${fmt(ledgerGrandTotalPayout)}",
+                                        color = LuckyTextSecondary,
+                                        fontSize = 11.sp
+                                    )
                                 }
-
-                                Row {
-                                    IconButton(
-                                        onClick = { ShareHelper.copyToClipboard(context, singleText) },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy Agent", tint = LuckyLime, modifier = Modifier.size(18.dp))
-                                    }
-                                    IconButton(
-                                        onClick = { ShareHelper.shareText(context, singleText) },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(Icons.Default.Share, contentDescription = "Share Agent", tint = Color.White, modifier = Modifier.size(18.dp))
-                                    }
-                                }
+                                Text(
+                                    text = "${if (isLedgerProfit) "+" else "-"}${fmt(abs(ledgerGrandNet))}",
+                                    color = ledgerColor,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace
+                                )
                             }
 
-                            // Agent Settlement Details
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                SettlementRow(
-                                    label = "စုပေါင်းထိုးကြေး",
-                                    value = fmt(row.totalBet),
-                                    valueColor = Color.White
-                                )
-                                SettlementRow(
-                                    label = "ကော်မရှင် (${fmt(row.agent.rate)}%)",
-                                    value = fmt(row.commission),
-                                    valueColor = LuckyTextSecondary
-                                )
-                                SettlementRow(
-                                    label = "နုပ်ပြီးငွေ",
-                                    value = fmt(row.netAmount),
-                                    valueColor = LuckyLime
-                                )
-                                SettlementRow(
-                                    label = "ပေါက်သီး (${winNum.ifEmpty { "-" }})",
-                                    value = fmt(row.winBetAmount),
-                                    valueColor = Color.White
-                                )
-                                SettlementRow(
-                                    label = "ပေးငွေ (လျော်ကြေး)",
-                                    value = fmt(row.payout),
-                                    valueColor = if (row.payout > 0) LuckyDanger else LuckyTextSecondary
-                                )
-
-                                Divider(color = LuckyBorder, thickness = 0.5.dp)
-
-                                Row(
+                            settledRecords.forEach { rec ->
+                                val recProfit = rec.profitLoss >= 0
+                                val recColor = if (recProfit) LuckySuccess else LuckyDanger
+                                Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(top = 4.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .background(LuckyBg, RoundedCornerShape(8.dp))
+                                        .border(1.dp, LuckyBorder, RoundedCornerShape(8.dp))
+                                        .padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Text(
-                                        text = if (isCollect) "ရရန် (အမြတ်)" else "ပေးရန် (အရှုံး)",
-                                        color = if (isCollect) LuckyLime else LuckyDanger,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp
-                                    )
-                                    Text(
-                                        text = fmt(kotlin.math.abs(row.profitLoss)),
-                                        color = if (isCollect) LuckyLime else LuckyDanger,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 15.sp
-                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text(
+                                                text = "${rec.date} • ${rec.session}",
+                                                color = LuckyTextPrimary,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Surface(
+                                                color = LuckyDanger.copy(alpha = 0.12f),
+                                                shape = RoundedCornerShape(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = "ပေါက်သီး: ${rec.winningNumber.ifEmpty { "-" }}",
+                                                    color = LuckyDanger,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+
+                                        IconButton(
+                                            onClick = { recordToDelete = rec },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "ဖျက်မည်",
+                                                tint = LuckyDanger,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("စုစုပေါင်း ရောင်းကြေး: ${fmt(rec.totalRetained)}", color = LuckyTextPrimary, fontSize = 11.sp)
+                                        Text("ကော်မရှင်: ${fmt(rec.commission)}", color = LuckyTextSecondary, fontSize = 11.sp)
+                                        Text("လျော်ကြေး: ${fmt(rec.payout)}", color = LuckyDanger, fontSize = 11.sp)
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (recProfit) "အမြတ်" else "အရှုံး",
+                                            color = recColor,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "${if (recProfit) "+" else "-"}${fmt(abs(rec.profitLoss))}",
+                                            color = recColor,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -735,57 +742,289 @@ fun AgentSettlementScreen(
             }
         }
     }
-}
 
-private fun buildSingleAgent2DSettlementText(
-    date: String,
-    session: String,
-    winNum: String,
-    row: Agent2DSettlementItem
-): String {
-    val statusLabel = if (row.profitLoss >= 0) "ရရန်" else "ပေးရန်"
-    return listOf(
-        "2D စာရင်းချုပ် - ${row.agent.name}",
-        "နေ့စွဲ: $date ($session)",
-        "ထွက်ဂဏန်း: ${winNum.ifEmpty { "-" }}",
-        "စုပေါင်းထိုးကြေး: ${fmt(row.totalBet)}",
-        "ကော်မရှင် (${fmt(row.agent.rate)}%): ${fmt(row.commission)}",
-        "နုပ်ပြီးငွေ: ${fmt(row.netAmount)}",
-        "ပေါက်သီး: ${fmt(row.winBetAmount)}",
-        "ပေးငွေ: ${fmt(row.payout)}",
-        "$statusLabel: ${fmt(kotlin.math.abs(row.profitLoss))}"
-    ).joinToString("\n")
-}
-
-private fun buildAllAgents2DSettlementText(
-    date: String,
-    session: String,
-    winNum: String,
-    rows: List<Agent2DSettlementItem>,
-    grandTotalBet: Long,
-    grandCommission: Long,
-    grandNetAmount: Long,
-    grandWinBet: Long,
-    grandPayout: Long,
-    grandProfitLoss: Long
-): String {
-    val lines = mutableListOf(
-        "2D စာရင်းချုပ်",
-        "နေ့စွဲ: $date ($session)",
-        "ထွက်ဂဏန်း: ${winNum.ifEmpty { "-" }}",
-        "----------------"
-    )
-    rows.forEach { row ->
-        val statusLabel = if (row.profitLoss >= 0) "ရရန်" else "ပေးရန်"
-        lines.add("${row.agent.name}: ထိုးကြေး=${fmt(row.totalBet)} | နုပ်ပြီး=${fmt(row.netAmount)} | ပေါက်သီး=${fmt(row.winBetAmount)} | ပေးငွေ=${fmt(row.payout)} | $statusLabel=${fmt(kotlin.math.abs(row.profitLoss))}")
+    if (recordToDelete != null) {
+        val target = recordToDelete!!
+        DeleteConfirmDialog(
+            title = "မှတ်တမ်း ဖျက်ရန်",
+            message = "${target.date} (${target.session}) စာရင်းချုပ်မှတ်တမ်းကို ဖျက်ရန် သေချာပါသလား?",
+            onDismiss = { recordToDelete = null },
+            onConfirm = {
+                viewModel.deleteSettledRecord(target.id)
+                recordToDelete = null
+            }
+        )
     }
-    lines.add("----------------")
-    lines.add("စုစုပေါင်း ထိုးကြေး: ${fmt(grandTotalBet)}")
-    lines.add("စုစုပေါင်း ကော်မရှင်: ${fmt(grandCommission)}")
-    lines.add("ကော်နှုတ်ပြီးငွေ: ${fmt(grandNetAmount)}")
-    lines.add("စုစုပေါင်း ပေါက်သီး: ${fmt(grandWinBet)}")
-    lines.add("စုစုပေါင်း လျော်ကြေး: ${fmt(grandPayout)}")
-    val totalLabel = if (grandProfitLoss >= 0) "စုစုပေါင်း အမြတ်" else "စုစုပေါင်း အရှုံး"
-    lines.add("$totalLabel: ${fmt(kotlin.math.abs(grandProfitLoss))}")
-    return lines.joinToString("\n")
+
+    if (showClearAllDialog) {
+        DeleteConfirmDialog(
+            title = "စာရင်းချုပ် မှတ်တမ်းအားလုံး ရှင်းရန်",
+            message = "သိမ်းဆည်းထားသော စာရင်းချုပ် မှတ်တမ်းအားလုံးကို ဖျက်ရန် သေချာပါသလား?",
+            onDismiss = { showClearAllDialog = false },
+            onConfirm = {
+                viewModel.clearSettledLedger()
+                showClearAllDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun SettlementMetricRow(
+    label: String,
+    value: String,
+    valueColor: Color
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, color = LuckyTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        Text(
+            text = value,
+            color = valueColor,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace
+        )
+    }
+}
+
+@Composable
+fun AgentSettlementScreen(viewModel: MainViewModel) {
+    val context = LocalContext.current
+    val selectedDate by viewModel.selectedDate.collectAsState()
+    val selectedSession by viewModel.selectedSession.collectAsState()
+    val sessions by viewModel.sessions.collectAsState()
+    val agents by viewModel.agents.collectAsState()
+    val vouchers by viewModel.vouchers.collectAsState()
+    val wins by viewModel.wins.collectAsState()
+
+    val currentWin = remember(wins, selectedDate, selectedSession) {
+        viewModel.getWinningNumberForCurrentSession()
+    }
+
+    val agentItems = remember(agents, vouchers, selectedDate, selectedSession, currentWin) {
+        viewModel.getAgent2DSettlementList(currentWin)
+    }
+
+    val totalBetSum = remember(agentItems) { agentItems.sumOf { it.totalBet } }
+    val totalCommSum = remember(agentItems) { agentItems.sumOf { it.commission } }
+    val totalPayoutSum = remember(agentItems) { agentItems.sumOf { it.payout } }
+    val totalProfitLossSum = remember(totalBetSum, totalCommSum, totalPayoutSum) {
+        totalBetSum - (totalCommSum + totalPayoutSum)
+    }
+
+    fun formatAgentSettlementShare(item: Agent2DSettlementItem): String {
+        val isProfit = item.profitLoss >= 0
+        val sign = if (isProfit) "+" else "-"
+        val status = if (isProfit) "အမြတ်" else "အရှုံး"
+        return buildString {
+            append("================================\n")
+            append("   2D စာရင်းချုပ် (${item.agent.name})\n")
+            append("================================\n")
+            append("ရက်စွဲ : $selectedDate ($selectedSession)\n")
+            append("ပေါက်သီး : ${currentWin.ifEmpty { "-" }}\n")
+            append("--------------------------------\n")
+            append("စုစုပေါင်း ရောင်းကြေး : ${fmt(item.totalBet)}\n")
+            append("ကော်မရှင် (${fmt(item.agent.rate)}%) : -${fmt(item.commission)}\n")
+            append("ကော်နုတ်ပြီး : ${fmt(item.netAmount)}\n")
+            append("ပေါက်သီး (${currentWin.ifEmpty { "-" }}) : ${fmt(item.winBetAmount)}\n")
+            append("လျော်ကြေး (အဆ ${fmt(item.agent.mult)}) : -${fmt(item.payout)}\n")
+            append("--------------------------------\n")
+            append("အသားတင် ($status) : $sign${fmt(abs(item.profitLoss))}\n")
+            append("================================\n")
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LuckyBg)
+    ) {
+        AppHeader(
+            title = "2D စာရင်းချုပ်",
+            selectedSession = selectedSession,
+            sessions = sessions,
+            onSessionSelected = { viewModel.setSession(it) },
+            onBack = { viewModel.goBack() }
+        )
+
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = LuckyCard),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "$selectedDate • $selectedSession",
+                                color = LuckyHeader,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Surface(
+                                color = LuckyDanger.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = "ပေါက်သီး: ${currentWin.ifEmpty { "-" }}",
+                                    color = LuckyDanger,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+
+                        val isOverallProfit = totalProfitLossSum >= 0
+                        val overallColor = if (isOverallProfit) LuckySuccess else LuckyDanger
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(overallColor.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "စုစုပေါင်း (${if (isOverallProfit) "အမြတ်" else "အရှုံး"})",
+                                    color = overallColor,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                Text(
+                                    text = "ရောင်း ${fmt(totalBetSum)} | ကော် ${fmt(totalCommSum)} | လျော် ${fmt(totalPayoutSum)}",
+                                    color = LuckyTextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Text(
+                                text = "${if (isOverallProfit) "+" else "-"}${fmt(abs(totalProfitLossSum))}",
+                                color = overallColor,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (agentItems.isEmpty()) {
+                item {
+                    EmptyStateView(message = "ကော်မရှင် စာရင်း မရှိသေးပါ")
+                }
+            } else {
+                items(agentItems, key = { it.agent.id }) { item ->
+                    val isProfit = item.profitLoss >= 0
+                    val statusColor = if (isProfit) LuckySuccess else LuckyDanger
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = LuckyCard),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        text = item.agent.name,
+                                        color = LuckyTextPrimary,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "ကော်မရှင် ${fmt(item.agent.rate)}% • အဆ ${fmt(item.agent.mult)} • ဘောင်ချာ (${item.voucherCount})",
+                                        color = LuckyTextMuted,
+                                        fontSize = 11.sp
+                                    )
+                                }
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    IconButton(
+                                        onClick = {
+                                            ShareHelper.copyToClipboard(context, formatAgentSettlementShare(item))
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.ContentCopy, contentDescription = "ကူးယူမည်", tint = LuckyHeader, modifier = Modifier.size(18.dp))
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            ShareHelper.shareText(context, formatAgentSettlementShare(item), "2D စာရင်းချုပ်")
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.Share, contentDescription = "မျှဝေမည်", tint = LuckyHeader, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(color = LuckyBorder)
+
+                            SettlementMetricRow("စုစုပေါင်း ရောင်းကြေး", fmt(item.totalBet), LuckyTextPrimary)
+                            SettlementMetricRow("ကော်မရှင်", "-${fmt(item.commission)}", LuckyWarning)
+                            SettlementMetricRow("ပေါက်သီး (${currentWin.ifEmpty { "-" }}) ထိုးကြေး", fmt(item.winBetAmount), LuckyDanger)
+                            SettlementMetricRow("လျော်ကြေး", "-${fmt(item.payout)}", LuckyDanger)
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(statusColor.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (isProfit) "အသားတင် အမြတ်" else "အသားတင် အရှုံး",
+                                    color = statusColor,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                Text(
+                                    text = "${if (isProfit) "+" else "-"}${fmt(abs(item.profitLoss))}",
+                                    color = statusColor,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

@@ -2,7 +2,6 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,7 +12,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,10 +45,8 @@ fun AgentsScreen(
     var agentToEdit by remember { mutableStateOf<Agent?>(null) }
     var agentToDelete by remember { mutableStateOf<Agent?>(null) }
 
-    // Winning number for current date & session
     val winNum = wins.firstOrNull { it.date == selectedDate && it.session == selectedSession }?.n
 
-    // Filter agents by search query
     val filteredAgents = agents.filter {
         searchQuery.isBlank() || it.name.contains(searchQuery, ignoreCase = true) || it.id.toString() == searchQuery.trim()
     }
@@ -58,16 +54,17 @@ fun AgentsScreen(
     Box(modifier = modifier.fillMaxSize().background(LuckyBg)) {
         Column(modifier = Modifier.fillMaxSize()) {
             AppHeader(
-                title = "ကော်မရှင်များ (Agents)",
+                title = "ကော်မရှင်",
                 selectedSession = selectedSession,
                 sessions = sessions,
-                onSessionSelected = { viewModel.setSession(it) }
+                onSessionSelected = { viewModel.setSession(it) },
+                onBack = { viewModel.goBack() }
             )
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -77,17 +74,18 @@ fun AgentsScreen(
                     Text(
                         text = "နေ့စွဲ : $selectedDate",
                         color = LuckyTextSecondary,
-                        fontSize = 13.sp
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
                     )
                     Text(
-                        text = "အပိုင်း : $selectedSession",
-                        color = LuckyLime,
+                        text = "အကြိမ် : $selectedSession",
+                        color = LuckyHeader,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 SearchPill(
                     query = searchQuery,
@@ -100,20 +98,22 @@ fun AgentsScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp),
-                contentPadding = PaddingValues(bottom = 90.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .padding(horizontal = 8.dp),
+                contentPadding = PaddingValues(bottom = 88.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (filteredAgents.isEmpty()) {
                     item {
                         EmptyListPlaceholder(
-                            text = "အချက်အလက် မရှိသေးပါ။ + ကိုနှိပ်ပြီး ထည့်ပါ",
+                            text = "ကော်မရှင် မရှိသေးပါ။ + ကိုနှိပ်ပြီး ထည့်ပါ",
                             modifier = Modifier.padding(vertical = 40.dp)
                         )
                     }
                 } else {
                     items(filteredAgents, key = { it.id }) { agent ->
-                        val summary = viewModel.getAgentSummaryData(agent, winNum ?: "")
+                        val summary = remember(agent, vouchers, wins, selectedDate, selectedSession) {
+                            viewModel.getAgentSummaryData(agent, winNum ?: "")
+                        }
                         AgentCard(
                             agent = agent,
                             totalBet = summary.totalBet,
@@ -136,21 +136,19 @@ fun AgentsScreen(
             }
         }
 
-        // Floating Action Button to Add Agent
         FloatingActionButton(
             onClick = { showAddDialog = true },
-            containerColor = LuckyLime,
-            contentColor = LuckyBg,
+            containerColor = LuckyHeader,
+            contentColor = Color.White,
             shape = CircleShape,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(bottom = 80.dp, end = 20.dp)
+                .padding(bottom = 20.dp, end = 16.dp)
                 .testTag("add_agent_fab")
         ) {
-            Icon(Icons.Default.Add, contentDescription = "Add Agent", modifier = Modifier.size(28.dp))
+            Icon(Icons.Default.Add, contentDescription = "ကော်မရှင် အသစ်ထည့်ရန်", modifier = Modifier.size(28.dp))
         }
 
-        // Add Agent Dialog
         if (showAddDialog) {
             AddAgentDialog(
                 nextId = (agents.maxOfOrNull { it.id } ?: 0) + 1,
@@ -162,7 +160,6 @@ fun AgentsScreen(
             )
         }
 
-        // Edit Agent Dialog
         agentToEdit?.let { ag ->
             EditAgentDialog(
                 agent = ag,
@@ -174,7 +171,6 @@ fun AgentsScreen(
             )
         }
 
-        // Delete Confirm Dialog
         agentToDelete?.let { ag ->
             DeleteConfirmDialog(
                 itemName = ag.name,
@@ -204,7 +200,7 @@ fun AgentCard(
 
     if (showMenu) {
         RecordActionMenuDialog(
-            title = "${agent.name} (ကိုယ်စားလှယ်)",
+            title = "${agent.name} (ရောင်းစာရေး)",
             onDismiss = { showMenu = false },
             onEdit = onEdit,
             onDelete = onDelete
@@ -212,20 +208,20 @@ fun AgentCard(
     }
 
     Card(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = LuckyCard),
         modifier = Modifier
             .fillMaxWidth()
             .recordLongPress(onLongPress = { showMenu = true })
-            .border(1.dp, LuckyBorder, RoundedCornerShape(18.dp))
+            .border(1.dp, LuckyBorder, RoundedCornerShape(12.dp))
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Teal Top Header: ကော် အိုင်ဒီ, အမည်, ＋ button to start betting
+            // Blue Top Header
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(LuckyHeader)
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -235,14 +231,14 @@ fun AgentCard(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(30.dp)
                             .clip(CircleShape)
-                            .background(LuckyBg),
+                            .background(Color.White),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "${agent.id}",
-                            color = LuckyLime,
+                            color = LuckyHeader,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -256,7 +252,7 @@ fun AgentCard(
                         )
                         Text(
                             text = "ကော်: ${agent.rate.toInt()}% | အဆ: ${agent.mult.toInt()}",
-                            color = LuckyTextSecondary,
+                            color = Color.White.copy(alpha = 0.9f),
                             fontSize = 11.sp
                         )
                     }
@@ -264,55 +260,54 @@ fun AgentCard(
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     IconButton(
                         onClick = onDelete,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(30.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete",
-                            tint = LuckyDanger,
+                            contentDescription = "ဖျက်မည်",
+                            tint = Color.White,
                             modifier = Modifier.size(18.dp)
                         )
                     }
 
-                    // ＋ button starts number entry for this agent
                     Button(
                         onClick = onStartBet,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = LuckyLime,
-                            contentColor = LuckyBg
+                            containerColor = Color.White,
+                            contentColor = LuckyHeader
                         ),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.height(34.dp).testTag("agent_start_bet_${agent.id}")
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.height(32.dp).testTag("agent_start_bet_${agent.id}")
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "ထိုးမည်", modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Add, contentDescription = "ထိုးမည်", modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("ထိုးမည်", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     }
                 }
             }
 
-            // Bottom stats grid: စုပေါင်း, ကော်, နုပ်ပြီးငွေ, ဘောင်ချာ, ပေးငွေ (plain numbers)
+            // Stats grid
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
+                    .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    StatCell(label = "စုပေါင်း", value = fmt(totalBet))
-                    StatCell(label = "ကော်", value = fmt(commission))
+                    StatCell(label = "စုပေါင်းထိုးကြေး", value = fmt(totalBet))
+                    StatCell(label = "ရောင်းကော်", value = fmt(commission))
                     StatCell(label = "နုပ်ပြီးငွေ", value = fmt(netAmount), isHighlight = true)
                 }
 
-                Divider(color = LuckyBorder, thickness = 0.5.dp)
+                HorizontalDivider(color = LuckyBorder, thickness = 0.5.dp)
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -320,11 +315,16 @@ fun AgentCard(
                 ) {
                     StatCell(label = "ဘောင်ချာ", value = "$voucherCount စောင်")
                     StatCell(
-                        label = "ပေးငွေ",
+                        label = "ပေါက်သီးကြေး",
                         value = fmt(payout),
                         valueColor = if (payout > 0) LuckyDanger else LuckyTextSecondary
                     )
-                    Spacer(modifier = Modifier.weight(1f))
+                    val netResult = netAmount - payout
+                    StatCell(
+                        label = if (netResult >= 0) "ရရန်" else "ပေးရန်",
+                        value = "${if (netResult >= 0) "+" else "-"}${fmt(kotlin.math.abs(netResult))}",
+                        valueColor = if (netResult >= 0) LuckySuccess else LuckyDanger
+                    )
                 }
             }
         }
@@ -342,13 +342,15 @@ fun RowScope.StatCell(
         Text(
             text = label,
             color = LuckyTextMuted,
-            fontSize = 11.sp
+            fontSize = 11.sp,
+            maxLines = 1
         )
         Text(
             text = value,
-            color = valueColor ?: if (isHighlight) LuckyLime else Color.White,
+            color = valueColor ?: if (isHighlight) LuckyHeader else LuckyTextPrimary,
             fontWeight = FontWeight.Bold,
-            fontSize = 13.sp
+            fontSize = 13.sp,
+            maxLines = 1
         )
     }
 }
@@ -366,7 +368,7 @@ fun AddAgentDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = LuckyCard,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(14.dp),
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -374,14 +376,14 @@ fun AddAgentDialog(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(34.dp)
                         .clip(CircleShape)
                         .background(LuckyHeader),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Person, contentDescription = null, tint = LuckyLime)
+                    Icon(Icons.Default.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
                 }
-                Text("ကော်မရှင် အသစ်ထည့်မည်", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("ကော်မရှင် အသစ်ထည့်မည်", color = LuckyTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
         },
         text = {
@@ -390,7 +392,7 @@ fun AddAgentDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "ကော် အိုင်ဒီ : $nextId (Auto)",
+                    text = "ကော် အိုင်ဒီ : $nextId",
                     color = LuckyTextSecondary,
                     fontSize = 13.sp
                 )
@@ -402,10 +404,10 @@ fun AddAgentDialog(
                     label = { Text("အမည်") },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = LuckyLime,
+                        focusedBorderColor = LuckyHeader,
                         unfocusedBorderColor = LuckyBorder,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
+                        focusedTextColor = LuckyTextPrimary,
+                        unfocusedTextColor = LuckyTextPrimary
                     ),
                     modifier = Modifier.fillMaxWidth().testTag("add_agent_name_input")
                 )
@@ -417,15 +419,15 @@ fun AddAgentDialog(
                     OutlinedTextField(
                         value = rateStr,
                         onValueChange = { rateStr = it },
-                        placeholder = { Text("00", color = LuckyTextMuted) },
+                        placeholder = { Text("15", color = LuckyTextMuted) },
                         label = { Text("ကော် (%)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = LuckyLime,
+                            focusedBorderColor = LuckyHeader,
                             unfocusedBorderColor = LuckyBorder,
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
+                            focusedTextColor = LuckyTextPrimary,
+                            unfocusedTextColor = LuckyTextPrimary
                         ),
                         modifier = Modifier.weight(1f).testTag("add_agent_rate_input")
                     )
@@ -433,15 +435,15 @@ fun AddAgentDialog(
                     OutlinedTextField(
                         value = multStr,
                         onValueChange = { multStr = it },
-                        placeholder = { Text("00", color = LuckyTextMuted) },
+                        placeholder = { Text("80", color = LuckyTextMuted) },
                         label = { Text("အဆ") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = LuckyLime,
+                            focusedBorderColor = LuckyHeader,
                             unfocusedBorderColor = LuckyBorder,
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
+                            focusedTextColor = LuckyTextPrimary,
+                            unfocusedTextColor = LuckyTextPrimary
                         ),
                         modifier = Modifier.weight(1f).testTag("add_agent_mult_input")
                     )
@@ -452,12 +454,12 @@ fun AddAgentDialog(
             Button(
                 onClick = {
                     if (name.isNotBlank()) {
-                        val rate = rateStr.toDoubleOrNull() ?: 0.0
-                        val mult = multStr.toDoubleOrNull() ?: 0.0
+                        val rate = rateStr.toDoubleOrNull() ?: 15.0
+                        val mult = multStr.toDoubleOrNull() ?: 80.0
                         onAdd(name.trim(), rate, mult)
                     }
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = LuckyLime, contentColor = LuckyBg),
+                colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
                 modifier = Modifier.testTag("add_agent_submit_btn")
             ) {
                 Text("ထည့်မည်", fontWeight = FontWeight.Bold)
@@ -487,7 +489,7 @@ fun EditAgentDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = LuckyCard,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(14.dp),
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -495,14 +497,14 @@ fun EditAgentDialog(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(34.dp)
                         .clip(CircleShape)
                         .background(LuckyHeader),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Person, contentDescription = null, tint = LuckyLime)
+                    Icon(Icons.Default.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
                 }
-                Text("ကိုယ်စားလှယ် ပြင်ဆင်မည်", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("ရောင်းစာရေး ပြင်ဆင်မည်", color = LuckyTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
         },
         text = {
@@ -522,10 +524,10 @@ fun EditAgentDialog(
                     label = { Text("အမည်") },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = LuckyLime,
+                        focusedBorderColor = LuckyHeader,
                         unfocusedBorderColor = LuckyBorder,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
+                        focusedTextColor = LuckyTextPrimary,
+                        unfocusedTextColor = LuckyTextPrimary
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -538,14 +540,14 @@ fun EditAgentDialog(
                         value = rateStr,
                         onValueChange = { rateStr = it },
                         label = { Text("ကော် (%)") },
-                        placeholder = { Text("00", color = LuckyTextMuted) },
+                        placeholder = { Text("15", color = LuckyTextMuted) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = LuckyLime,
+                            focusedBorderColor = LuckyHeader,
                             unfocusedBorderColor = LuckyBorder,
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
+                            focusedTextColor = LuckyTextPrimary,
+                            unfocusedTextColor = LuckyTextPrimary
                         ),
                         modifier = Modifier.weight(1f)
                     )
@@ -554,14 +556,14 @@ fun EditAgentDialog(
                         value = multStr,
                         onValueChange = { multStr = it },
                         label = { Text("အဆ") },
-                        placeholder = { Text("00", color = LuckyTextMuted) },
+                        placeholder = { Text("80", color = LuckyTextMuted) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = LuckyLime,
+                            focusedBorderColor = LuckyHeader,
                             unfocusedBorderColor = LuckyBorder,
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
+                            focusedTextColor = LuckyTextPrimary,
+                            unfocusedTextColor = LuckyTextPrimary
                         ),
                         modifier = Modifier.weight(1f)
                     )
@@ -577,9 +579,9 @@ fun EditAgentDialog(
                         onSave(agent.copy(name = name.trim(), rate = rate, mult = mult))
                     }
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = LuckyLime, contentColor = LuckyBg)
+                colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White)
             ) {
-                Text("ပြင်ဆင်မည်", fontWeight = FontWeight.Bold)
+                Text("သိမ်းမည်", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -587,7 +589,7 @@ fun EditAgentDialog(
                 onClick = onDismiss,
                 colors = ButtonDefaults.textButtonColors(contentColor = LuckyTextSecondary)
             ) {
-                Text("Cancel")
+                Text("မလုပ်တော့ပါ")
             }
         }
     )

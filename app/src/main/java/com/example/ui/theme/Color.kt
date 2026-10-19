@@ -2,25 +2,32 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Fintech Dark Theme Palette for Lucky2d
-val LuckyBg = Color(0xFF0D1815)           // Background #0D1815
-val LuckyCard = Color(0xFF162621)         // Cards #162621
-val LuckyCardDark = Color(0xFF111F1B)     // Darker card background
-val LuckyHeader = Color(0xFF235347)       // Headers, Table headers #235347
-val LuckyKeyBg = Color(0xFF22332D)        // Keys #22332D
-val LuckyKeyHover = Color(0xFF2D443C)     // Pressed key
-val LuckyLime = Color(0xFFC6F432)         // Accent lime #C6F432
-val LuckyLimeDark = Color(0xFFA5D122)     // Darker lime
-val LuckyDanger = Color(0xFFE5484D)       // Danger #E5484D
-val LuckyDangerDark = Color(0xFFB82D32)
+// Brand Green (#235347) & Clean Modern Palette
+val LuckyBg = Color(0xFFF4F7F6)           // Clean subtle mint-tinted light background
+val LuckyCard = Color(0xFFFFFFFF)         // Pure white card surface #FFFFFF
+val LuckyCardDark = Color(0xFFEAF0EE)     // Subtle alternating row / secondary surface
+val LuckyHeader = Color(0xFF235347)       // Official Brand Green #235347 for header & home grid cards
+val LuckyBlueDark = Color(0xFF183B32)     // Darker brand green for active/pressed states
+val LuckyKeyBg = Color(0xFFE2EBE8)        // Keypad number key surface
+val LuckyKeyHover = Color(0xFFCBDAD5)     // Pressed key
 
-val LuckyBorder = Color(0xFF243B33)       // Border lines
-val LuckyTextPrimary = Color(0xFFFFFFFF)  // White text
-val LuckyTextSecondary = Color(0xFF9EBCB3)// Muted cyan-gray
-val LuckyTextMuted = Color(0xFF6B8B82)
+// Accent & Status Colors
+val LuckyLime = Color(0xFF235347)         // Primary interactive accent (#235347)
+val LuckyLimeDark = Color(0xFF183B32)     // Darker interactive accent
+val LuckySuccess = Color(0xFF2E7D32)      // Profit (+) / Positive green #2E7D32
+val LuckyDateGreen = Color(0xFF235347)    // Home screen date green #235347
+val LuckyDanger = Color(0xFFD32F2F)       // Loss (-) / Danger red #D32F2F
+val LuckyDangerDark = Color(0xFFB71C1C)
+val LuckyWarning = Color(0xFFF57C00)      // Highlight / Winning badge orange
 
-// Pixel Clover Logo Colors
-val CloverDarkGreen = Color(0xFF1B7F3A)   // Outline #1B7F3A
-val CloverMidGreen = Color(0xFF6DBE45)    // Mid #6DBE45
-val CloverLightGreen = Color(0xFFB5E27A)  // Light #B5E27A
-val CloverBg = Color(0xFFEAF8CF)          // Circle background #EAF8CF
+// Borders & Typography Colors
+val LuckyBorder = Color(0xFFCBD5E1)       // Clean table & card border lines
+val LuckyTextPrimary = Color(0xFF111827)  // High-contrast near-black text
+val LuckyTextSecondary = Color(0xFF4B5563)// Readable dark gray secondary text
+val LuckyTextMuted = Color(0xFF6B7280)    // Muted label gray
+
+// Clover / Brand Icon Colors (#235347 background & #FFFFFF foreground)
+val CloverDarkGreen = Color(0xFF235347)
+val CloverMidGreen = Color(0xFF2E6B5C)
+val CloverLightGreen = Color(0xFFFFFFFF)
+val CloverBg = Color(0xFF235347)

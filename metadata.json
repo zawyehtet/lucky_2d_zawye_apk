@@ -1,5 +1,5 @@
 {
-  "name": "Lucky2d",
+  "name": "Lucky2D",
   "description": "Mobile 2D lottery accounting app with offline storage, agent commission tracking, number entry, brake/layoff, vouchers, and settlement.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

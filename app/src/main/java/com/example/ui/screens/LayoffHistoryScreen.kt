@@ -2,7 +2,6 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -15,7 +14,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -42,10 +40,7 @@ fun LayoffHistoryScreen(
 
     var selectedDetailRecord by remember { mutableStateOf<LayoffRecord?>(null) }
     var batchToDelete by remember { mutableStateOf<LayoffRecord?>(null) }
-
-    // Item edit / delete inside detail dialog
     var itemToEdit by remember { mutableStateOf<Pair<Int, LayoffItem>?>(null) }
-    var itemToDelete by remember { mutableStateOf<Pair<Int, LayoffItem>?>(null) }
 
     val filtered = layoffs.filter { it.date == selectedDate && (selectedSession.isEmpty() || it.session == selectedSession) }
     val grandTotal = filtered.sumOf { it.total }
@@ -56,30 +51,31 @@ fun LayoffHistoryScreen(
             .background(LuckyBg)
     ) {
         AppHeader(
-            title = "တင်ကွက်မှတ်တမ်း (Layoffs)",
+            title = "တင်ကွက်မှတ်တမ်း",
             selectedSession = selectedSession,
             sessions = sessions,
-            onSessionSelected = { viewModel.setSession(it) }
+            onSessionSelected = { viewModel.setSession(it) },
+            onBack = { viewModel.goBack() }
         )
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Header Stats card
+            // Header Stats Card
             Card(
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(10.dp),
                 colors = CardDefaults.cardColors(containerColor = LuckyCard),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, LuckyBorder, RoundedCornerShape(18.dp))
+                    .border(1.dp, LuckyBorder, RoundedCornerShape(10.dp))
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -90,8 +86,8 @@ fun LayoffHistoryScreen(
                             fontSize = 13.sp
                         )
                         Text(
-                            text = "အပိုင်း : ${if (selectedSession.isEmpty()) "အကြိမ် မရှိသေးပါ" else selectedSession}",
-                            color = LuckyLime,
+                            text = "အကြိမ် : ${if (selectedSession.isEmpty()) "အကြိမ် မရှိသေးပါ" else selectedSession}",
+                            color = LuckyHeader,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp
                         )
@@ -105,7 +101,7 @@ fun LayoffHistoryScreen(
                         )
                         Text(
                             text = "${filtered.size} ခု",
-                            color = Color.White,
+                            color = LuckyTextPrimary,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )
@@ -113,14 +109,14 @@ fun LayoffHistoryScreen(
                 }
             }
 
-            // Table of Layoffs
+            // Full-Width Table of Layoffs
             Card(
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(10.dp),
                 colors = CardDefaults.cardColors(containerColor = LuckyCard),
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .border(1.dp, LuckyBorder, RoundedCornerShape(18.dp))
+                    .border(1.dp, LuckyBorder, RoundedCornerShape(10.dp))
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
                     // Table Header
@@ -128,19 +124,19 @@ fun LayoffHistoryScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(LuckyHeader)
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("စဉ်", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.width(32.dp))
-                        Text("အချိန်", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1.5f))
-                        Text("အပိုင်း", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
-                        Text("တင်ငွေ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1.2f), textAlign = TextAlign.End)
+                        Text("စဉ်", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, softWrap = false, modifier = Modifier.weight(0.6f))
+                        Text("အချိန်", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, softWrap = false, modifier = Modifier.weight(1.4f))
+                        Text("အကြိမ်", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, softWrap = false, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                        Text("တင်ငွေ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, softWrap = false, modifier = Modifier.weight(1.2f), textAlign = TextAlign.End)
                     }
 
                     if (filtered.isEmpty()) {
                         EmptyListPlaceholder(
-                            text = "အချက်အလက် မရှိသေးပါ။ + ကိုနှိပ်ပြီး ထည့်ပါ",
+                            text = "တင်ကွက်မှတ်တမ်း မရှိသေးပါ",
                             modifier = Modifier.weight(1f)
                         )
                     } else {
@@ -154,27 +150,27 @@ fun LayoffHistoryScreen(
                                             onLongPress = { batchToDelete = record }
                                         )
                                         .background(if (idx % 2 == 0) LuckyCard else LuckyCardDark)
-                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                        .padding(horizontal = 12.dp, vertical = 11.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("${idx + 1}.", color = LuckyTextMuted, fontSize = 12.sp, modifier = Modifier.width(32.dp))
-                                    Text(record.time.substringAfter("/"), color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1.5f))
-                                    Text(record.session, color = LuckyLime, fontSize = 12.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
-                                    Text(fmt(record.total), color = LuckyDanger, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1.2f), textAlign = TextAlign.End)
+                                    Text("${idx + 1}.", color = LuckyTextMuted, fontSize = 12.sp, maxLines = 1, softWrap = false, modifier = Modifier.weight(0.6f))
+                                    Text(record.time.substringAfter("/"), color = LuckyTextPrimary, fontSize = 13.sp, maxLines = 1, softWrap = false, modifier = Modifier.weight(1.4f))
+                                    Text(record.session, color = LuckyHeader, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, maxLines = 1, softWrap = false, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                                    Text(fmt(record.total), color = LuckyDanger, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, softWrap = false, modifier = Modifier.weight(1.2f), textAlign = TextAlign.End)
                                 }
-                                Divider(color = LuckyBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
+                                HorizontalDivider(color = LuckyBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
                             }
                         }
                     }
 
                     // Footer Total
-                    Divider(color = LuckyBorder, thickness = 1.dp)
+                    HorizontalDivider(color = LuckyBorder, thickness = 1.dp)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(LuckyHeader)
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -186,8 +182,8 @@ fun LayoffHistoryScreen(
                         )
                         Text(
                             text = fmt(grandTotal),
-                            color = LuckyLime,
-                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontWeight = FontWeight.ExtraBold,
                             fontSize = 15.sp
                         )
                     }
@@ -214,33 +210,32 @@ fun LayoffHistoryScreen(
             AlertDialog(
                 onDismissRequest = { selectedDetailRecord = null },
                 containerColor = LuckyCard,
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(14.dp),
                 title = {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("တင်ကွက် အသေးစိတ်", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("တင်ကွက် အသေးစိတ်", color = LuckyTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         Row {
                             IconButton(onClick = { ShareHelper.copyToClipboard(context, detailText) }) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = LuckyLime)
+                                Icon(Icons.Default.ContentCopy, contentDescription = "ကူးယူရန်", tint = LuckyHeader)
                             }
                             IconButton(onClick = { ShareHelper.shareText(context, detailText) }) {
-                                Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White)
+                                Icon(Icons.Default.Share, contentDescription = "မျှဝေရန်", tint = LuckyHeader)
                             }
                         }
                     }
                 },
                 text = {
-                    Column(modifier = Modifier.fillMaxWidth().heightIn(max = 350.dp)) {
+                    Column(modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
                         Text("အချိန် : ${record.time}", color = LuckyTextSecondary, fontSize = 12.sp)
                         Text("ဘရိတ်သတ်မှတ်ချက် : ${fmt(record.limit)}", color = LuckyTextSecondary, fontSize = 12.sp)
-                        Text("စုစုပေါင်း : ${fmt(record.total)} (${record.items.size} လုံး)", color = LuckyLime, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("စုစုပေါင်း : ${fmt(record.total)} (${record.items.size} လုံး)", color = LuckyHeader, fontWeight = FontWeight.Bold, fontSize = 13.sp)
 
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Divider(color = LuckyBorder)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        HorizontalDivider(color = LuckyBorder)
 
                         LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
                             itemsIndexed(record.items) { i, itm ->
@@ -253,21 +248,21 @@ fun LayoffHistoryScreen(
                                                 itemToEdit = Pair(i, itm)
                                             }
                                         )
-                                        .padding(vertical = 4.dp),
+                                        .padding(vertical = 6.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("${i + 1}. ${itm.n}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Text("${i + 1}. ${itm.n}", color = LuckyTextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                     Text(fmt(itm.a), color = LuckyDanger, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                                 }
-                                Divider(color = LuckyBorder.copy(alpha = 0.3f), thickness = 0.5.dp)
+                                HorizontalDivider(color = LuckyBorder.copy(alpha = 0.4f), thickness = 0.5.dp)
                             }
                         }
                     }
                 },
                 confirmButton = {
                     TextButton(onClick = { selectedDetailRecord = null }) {
-                        Text("ပိတ်မည်", color = LuckyLime)
+                        Text("ပိတ်မည်", color = LuckyHeader, fontWeight = FontWeight.Bold)
                     }
                 }
             )
@@ -296,23 +291,23 @@ fun LayoffHistoryScreen(
                 AlertDialog(
                     onDismissRequest = { itemToEdit = null },
                     containerColor = LuckyCard,
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(14.dp),
                     title = {
-                        Text("တင်ကွက် ပြင်ဆင်မည် (${itm.n})", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("တင်ကွက် ပြင်ဆင်မည် (${itm.n})", color = LuckyTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     },
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             OutlinedTextField(
                                 value = newAmountStr,
                                 onValueChange = { newAmountStr = it.filter { c -> c.isDigit() } },
-                                label = { Text("ပမာဏ (Amount)", color = LuckyTextSecondary) },
+                                label = { Text("ပမာဏ", color = LuckyTextSecondary) },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = LuckyLime,
+                                    focusedBorderColor = LuckyHeader,
                                     unfocusedBorderColor = LuckyBorder,
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
+                                    focusedTextColor = LuckyTextPrimary,
+                                    unfocusedTextColor = LuckyTextPrimary
                                 )
                             )
                         }
@@ -331,9 +326,9 @@ fun LayoffHistoryScreen(
                                 }
                                 itemToEdit = null
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = LuckyLime, contentColor = LuckyBg)
+                            colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White)
                         ) {
-                            Text("ပြင်ဆင်မည်", fontWeight = FontWeight.Bold)
+                            Text("သိမ်းမည်", fontWeight = FontWeight.Bold)
                         }
                     },
                     dismissButton = {
@@ -342,10 +337,10 @@ fun LayoffHistoryScreen(
                                 onClick = { showItemDeleteConfirm = true },
                                 colors = ButtonDefaults.textButtonColors(contentColor = LuckyDanger)
                             ) {
-                                Text("ဖျက်မည်")
+                                Text("ဖျက်မည်", fontWeight = FontWeight.Bold)
                             }
                             TextButton(onClick = { itemToEdit = null }) {
-                                Text("မလုပ်ပါ", color = LuckyTextSecondary)
+                                Text("မလုပ်တော့ပါ", color = LuckyTextSecondary)
                             }
                         }
                     }

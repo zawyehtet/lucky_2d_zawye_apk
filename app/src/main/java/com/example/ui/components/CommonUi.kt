@@ -10,12 +10,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
-import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -30,49 +29,73 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.Session
 import com.example.ui.theme.*
+import kotlinx.coroutines.withTimeoutOrNull
 
 @Composable
 fun AppHeader(
-    title: String = "Lucky2d",
+    title: String = "Lucky2D",
     selectedSession: String,
     sessions: List<Session>,
     onSessionSelected: (String) -> Unit,
+    onBack: (() -> Unit)? = null,
+    showSessionPill: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     Surface(
         color = LuckyHeader,
+        shadowElevation = 2.dp,
         modifier = modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.weight(1f)
             ) {
-                CloverLogo(size = 36.dp)
+                if (onBack != null) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "နောက်သို့",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+                CloverLogo(size = 30.dp)
                 Text(
                     text = title,
                     color = Color.White,
+                    fontFamily = LuckySansFontFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 20.sp
+                    fontSize = 19.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
-            SessionPill(
-                selectedSession = selectedSession,
-                sessions = sessions,
-                onSessionSelected = onSessionSelected
-            )
+            if (showSessionPill) {
+                SessionPill(
+                    selectedSession = selectedSession,
+                    sessions = sessions,
+                    onSessionSelected = onSessionSelected
+                )
+            }
         }
     }
 }
@@ -89,24 +112,26 @@ fun SessionPill(
     Box(modifier = modifier) {
         Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(20.dp))
-                .background(LuckyCard)
-                .border(1.dp, LuckyBorder, RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color.White.copy(alpha = 0.2f))
+                .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
                 .clickable { expanded = true }
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                text = if (sessions.isEmpty()) "အကြိမ် မရှိသေးပါ" else selectedSession,
-                color = if (sessions.isEmpty()) LuckyTextMuted else LuckyLime,
+                text = if (sessions.isEmpty()) "အကြိမ် မရှိသေးပါ" else selectedSession.ifEmpty { "12.AM" },
+                color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = 13.sp
+                fontSize = 13.sp,
+                maxLines = 1,
+                softWrap = false
             )
             Icon(
                 imageVector = Icons.Default.ArrowDropDown,
-                contentDescription = "Select Session",
-                tint = if (sessions.isEmpty()) LuckyTextMuted else LuckyLime,
+                contentDescription = "အကြိမ် ရွေးရန်",
+                tint = Color.White,
                 modifier = Modifier.size(18.dp)
             )
         }
@@ -133,7 +158,7 @@ fun SessionPill(
                         text = {
                             Text(
                                 text = s.name,
-                                color = if (s.name == selectedSession) LuckyLime else Color.White,
+                                color = if (s.name == selectedSession) LuckyHeader else LuckyTextPrimary,
                                 fontWeight = if (s.name == selectedSession) FontWeight.Bold else FontWeight.Normal
                             )
                         },
@@ -155,32 +180,31 @@ fun SearchPill(
     placeholder: String = "ရှာဖွေရန်...",
     modifier: Modifier = Modifier
 ) {
-    TextField(
+    OutlinedTextField(
         value = query,
         onValueChange = onQueryChange,
-        placeholder = { Text(placeholder, color = LuckyTextMuted, fontSize = 13.sp) },
+        placeholder = { Text(placeholder, color = LuckyTextMuted, fontSize = 13.sp, maxLines = 1) },
         leadingIcon = {
             Icon(
                 imageVector = Icons.Default.Search,
-                contentDescription = "Search",
+                contentDescription = "ရှာဖွေရန်",
                 tint = LuckyTextSecondary,
                 modifier = Modifier.size(18.dp)
             )
         },
         singleLine = true,
-        colors = TextFieldDefaults.colors(
+        colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = LuckyCard,
             unfocusedContainerColor = LuckyCard,
-            focusedTextColor = Color.White,
-            unfocusedTextColor = Color.White,
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent
+            focusedTextColor = LuckyTextPrimary,
+            unfocusedTextColor = LuckyTextPrimary,
+            focusedBorderColor = LuckyHeader,
+            unfocusedBorderColor = LuckyBorder
         ),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(10.dp),
         modifier = modifier
             .fillMaxWidth()
-            .height(46.dp)
-            .border(1.dp, LuckyBorder, RoundedCornerShape(20.dp))
+            .height(50.dp)
     )
 }
 
@@ -190,7 +214,7 @@ fun CircularActionButton(
     text: String? = null,
     backgroundColor: Color = LuckyHeader,
     contentColor: Color = Color.White,
-    size: Int = 56,
+    size: Int = 52,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -205,7 +229,7 @@ fun CircularActionButton(
         if (icon != null) {
             Icon(
                 imageVector = icon,
-                contentDescription = text ?: "Action",
+                contentDescription = text ?: "လုပ်ဆောင်ချက်",
                 tint = contentColor,
                 modifier = Modifier.size((size * 0.45).dp)
             )
@@ -268,11 +292,11 @@ fun DeleteConfirmDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = LuckyCard,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         title = {
             Text(
                 text = title,
-                color = Color.White,
+                color = LuckyTextPrimary,
                 fontWeight = FontWeight.Bold,
                 fontSize = 17.sp
             )
@@ -314,10 +338,11 @@ fun RecordActionMenuDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = LuckyCard,
+        shape = RoundedCornerShape(14.dp),
         title = {
             Text(
                 text = title,
-                color = Color.White,
+                color = LuckyTextPrimary,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp
             )
@@ -340,8 +365,8 @@ fun RecordActionMenuDialog(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = LuckyLime)
-                            Text("ပြင်ဆင်မည် (Edit)", color = Color.White, fontSize = 15.sp)
+                            Icon(Icons.Default.Edit, contentDescription = "ပြင်ဆင်မည်", tint = LuckyHeader, modifier = Modifier.size(20.dp))
+                            Text("ပြင်ဆင်မည်", color = LuckyTextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                         }
                     }
                 }
@@ -357,8 +382,8 @@ fun RecordActionMenuDialog(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = LuckyDanger)
-                        Text("ဖျက်မည် (Delete)", color = LuckyDanger, fontSize = 15.sp)
+                        Icon(Icons.Default.Delete, contentDescription = "ဖျက်မည်", tint = LuckyDanger, modifier = Modifier.size(20.dp))
+                        Text("ဖျက်မည်", color = LuckyDanger, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             }
@@ -400,11 +425,11 @@ fun EmptyListPlaceholder(
 }
 
 object ShareHelper {
-    fun copyToClipboard(context: Context, text: String, label: String = "Lucky2d") {
+    fun copyToClipboard(context: Context, text: String, label: String = "Lucky2D") {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText(label, text)
         clipboard.setPrimaryClip(clip)
-        Toast.makeText(context, "ကူးယူပြီးပါပြီ (Copied)", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "ကူးယူပြီးပါပြီ", Toast.LENGTH_SHORT).show()
     }
 
     fun shareText(context: Context, text: String, title: String = "ဘောင်ချာ မျှဝေမည်") {

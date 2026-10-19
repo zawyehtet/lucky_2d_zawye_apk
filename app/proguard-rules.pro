@@ -1,1 +1,1 @@
-# Proguard rules for Lucky2d
+# Proguard rules for Lucky2D

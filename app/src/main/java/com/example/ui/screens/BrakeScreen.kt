@@ -2,16 +2,12 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -50,37 +46,36 @@ fun BrakeScreen(
         viewModel.getAggregatedNumbers()
     }
 
-    // Split numbers calculation:
-    // LEFT = retained (min(total, limit))
-    // RIGHT = layoff (total - limit where total > limit)
     val leftRetainedList = summaries.map { summary ->
         val retained = minOf(summary.netAmount, limit)
-        summary.n to retained
-    }.filter { it.second > 0 }
+        Triple(summary.n, summary.entryCount, retained)
+    }.filter { it.third > 0 }
 
     val rightLayoffList = summaries.mapNotNull { summary ->
         if (summary.netAmount > limit) {
-            summary.n to (summary.netAmount - limit)
+            Triple(summary.n, summary.entryCount, summary.netAmount - limit)
         } else null
     }
 
-    val totalRetained = leftRetainedList.sumOf { it.second }
-    val totalLayoff = rightLayoffList.sumOf { it.second }
+    val totalRetained = leftRetainedList.sumOf { it.third }
+    val totalLayoff = rightLayoffList.sumOf { it.third }
 
     Box(modifier = modifier.fillMaxSize().background(LuckyBg)) {
         Column(modifier = Modifier.fillMaxSize()) {
             AppHeader(
-                title = "တင်ကွက်များ (Brake / Layoff)",
+                title = "တင်ကွက်များ",
                 selectedSession = selectedSession,
                 sessions = sessions,
-                onSessionSelected = { viewModel.setSession(it) }
+                onSessionSelected = { viewModel.setSession(it) },
+                onBack = { viewModel.goBack() }
             )
 
             // Header input "ဘရိတ် :", date and session
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -90,17 +85,16 @@ fun BrakeScreen(
                     Text(
                         text = "နေ့စွဲ : $selectedDate",
                         color = LuckyTextSecondary,
-                        fontSize = 13.sp
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
                     )
                     Text(
-                        text = "အပိုင်း : $selectedSession",
-                        color = LuckyLime,
+                        text = "အကြိမ် : $selectedSession",
+                        color = LuckyHeader,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
-
-                Spacer(modifier = Modifier.height(8.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -109,9 +103,11 @@ fun BrakeScreen(
                 ) {
                     Text(
                         text = "ဘရိတ် :",
-                        color = Color.White,
+                        color = LuckyTextPrimary,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        softWrap = false
                     )
 
                     OutlinedTextField(
@@ -120,45 +116,43 @@ fun BrakeScreen(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = LuckyLime,
+                            focusedBorderColor = LuckyHeader,
                             unfocusedBorderColor = LuckyBorder,
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
+                            focusedTextColor = LuckyTextPrimary,
+                            unfocusedTextColor = LuckyTextPrimary,
                             focusedContainerColor = LuckyCard,
                             unfocusedContainerColor = LuckyCard
                         ),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(8.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(50.dp)
+                            .height(48.dp)
                             .testTag("brake_limit_input")
                     )
 
                     Button(
                         onClick = { viewModel.saveBrakeLimit() },
                         colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        modifier = Modifier.height(50.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.height(48.dp)
                     ) {
-                        Icon(Icons.Default.Save, contentDescription = null, tint = LuckyLime, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Save, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("သိမ်းမည်", fontSize = 12.sp)
+                        Text("သိမ်းမည်", fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                     }
                 }
             }
 
-            // Split screen on a dark card:
-            // LEFT = retained (min(total, limit))
-            // RIGHT = layoff (total - limit where total > limit)
+            // Full-Width Split Table Card
             Card(
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(10.dp),
                 colors = CardDefaults.cardColors(containerColor = LuckyCard),
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .padding(horizontal = 16.dp)
-                    .border(1.dp, LuckyBorder, RoundedCornerShape(18.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .border(1.dp, LuckyBorder, RoundedCornerShape(10.dp))
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
                     // Split Headers
@@ -171,23 +165,54 @@ fun BrakeScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "လက်ခံကွက် (Retained)",
-                            color = LuckyLime,
+                            text = "လက်ခံကွက် (${leftRetainedList.size})",
+                            color = Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
                             textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier.weight(1f)
                         )
-                        Box(modifier = Modifier.width(1.dp).height(20.dp).background(LuckyBorder))
+                        Box(modifier = Modifier.width(1.dp).height(20.dp).background(Color.White.copy(alpha = 0.5f)))
                         Text(
-                            text = "တင်ကွက် (Layoff)",
-                            color = LuckyDanger,
+                            text = "တင်ကွက် (${rightLayoffList.size})",
+                            color = Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
                             textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier.weight(1f)
                         )
                     }
+
+                    // Split Subheaders (ဂဏန်း | အကြိမ် | ပမာဏ)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(LuckyCardDark)
+                            .padding(vertical = 6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("ဂဏန်း", color = LuckyTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                            Text("အကြိမ်", color = LuckyTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                            Text("ပမာဏ", color = LuckyTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                        }
+                        Box(modifier = Modifier.width(1.dp).height(16.dp).background(LuckyBorder))
+                        Row(
+                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("ဂဏန်း", color = LuckyTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                            Text("အကြိမ်", color = LuckyTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                            Text("ပမာဏ", color = LuckyTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                        }
+                    }
+                    HorizontalDivider(color = LuckyBorder)
 
                     // Split Body Content
                     Row(
@@ -200,7 +225,6 @@ fun BrakeScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             if (leftRetainedList.isEmpty()) {
                                 item {
@@ -212,17 +236,20 @@ fun BrakeScreen(
                                     )
                                 }
                             } else {
-                                items(leftRetainedList) { (num, amt) ->
+                                itemsIndexed(leftRetainedList) { idx, (num, cnt, amt) ->
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(vertical = 5.dp, horizontal = 4.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                            .background(if (idx % 2 == 0) LuckyCard else LuckyCardDark)
+                                            .padding(vertical = 7.dp, horizontal = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(num, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                        Text(fmt(amt), color = LuckyLime, fontSize = 13.sp)
+                                        Text(num, color = LuckyHeader, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, softWrap = false)
+                                        Text("$cnt", color = LuckyTextMuted, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                                        Text(fmt(amt), color = LuckySuccess, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, softWrap = false)
                                     }
-                                    Divider(color = LuckyBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
+                                    HorizontalDivider(color = LuckyBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
                                 }
                             }
                         }
@@ -240,7 +267,6 @@ fun BrakeScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             if (rightLayoffList.isEmpty()) {
                                 item {
@@ -252,36 +278,41 @@ fun BrakeScreen(
                                     )
                                 }
                             } else {
-                                items(rightLayoffList) { (num, amt) ->
+                                itemsIndexed(rightLayoffList) { idx, (num, cnt, amt) ->
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(vertical = 5.dp, horizontal = 4.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                            .background(if (idx % 2 == 0) LuckyCard else LuckyCardDark)
+                                            .padding(vertical = 7.dp, horizontal = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(num, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                        Text(fmt(amt), color = LuckyDanger, fontSize = 13.sp)
+                                        Text(num, color = LuckyTextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, softWrap = false)
+                                        Text("$cnt", color = LuckyTextMuted, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                                        Text(fmt(amt), color = LuckyDanger, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, softWrap = false)
                                     }
-                                    Divider(color = LuckyBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
+                                    HorizontalDivider(color = LuckyBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
                                 }
                             }
                         }
                     }
 
                     // Total Summaries
-                    Divider(color = LuckyBorder, thickness = 1.dp)
+                    HorizontalDivider(color = LuckyBorder, thickness = 1.dp)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(LuckyCardDark)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
                             text = "စုစုပေါင်း: ${fmt(totalRetained)}",
-                            color = LuckyLime,
+                            color = LuckySuccess,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier.weight(1f),
                             textAlign = TextAlign.Center
                         )
@@ -289,16 +320,16 @@ fun BrakeScreen(
                             text = "တင်ရန်: ${fmt(totalLayoff)}",
                             color = LuckyDanger,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier.weight(1f),
                             textAlign = TextAlign.Center
                         )
                     }
 
-                    // Action Buttons:
-                    // Left buttons: "＋ သိမ်းမည်", "ရက်ချုပ်"
-                    // Right buttons: "＋ တင်မည်", "မှတ်တမ်းများ"
-                    Divider(color = LuckyBorder, thickness = 1.dp)
+                    // Bottom Action Buttons aligned cleanly across the full table width
+                    HorizontalDivider(color = LuckyBorder, thickness = 1.dp)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -306,76 +337,73 @@ fun BrakeScreen(
                             .padding(8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Left Column Buttons
+                        // Left Column Buttons aligned with Left Table
                         Row(
                             modifier = Modifier.weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Button(
                                 onClick = { viewModel.saveBrakeLimit() },
                                 colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                                 modifier = Modifier.weight(1f).height(38.dp)
                             ) {
-                                Text("＋ သိမ်း", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("သိမ်းမည်", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                             }
 
                             Button(
                                 onClick = { viewModel.navigateTo(Screen.SETTLEMENT) },
-                                colors = ButtonDefaults.buttonColors(containerColor = LuckyLime, contentColor = LuckyBg),
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = LuckySuccess, contentColor = Color.White),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                                 modifier = Modifier.weight(1f).height(38.dp).testTag("goto_settlement_btn")
                             ) {
-                                Text("ရက်ချုပ်", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("ရက်ချုပ်", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                             }
                         }
 
-                        // Right Column Buttons
+                        // Right Column Buttons aligned with Right Table
                         Row(
                             modifier = Modifier.weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Button(
                                 onClick = { showConfirmDialog = true },
                                 colors = ButtonDefaults.buttonColors(containerColor = LuckyDanger, contentColor = Color.White),
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                                 modifier = Modifier.weight(1f).height(38.dp).testTag("open_layoff_dialog_btn")
                             ) {
-                                Text("＋ တင်မည်", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("တင်မည်", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                             }
 
                             Button(
                                 onClick = { viewModel.navigateTo(Screen.LAYOFF_HISTORY) },
                                 colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                                 modifier = Modifier.weight(1f).height(38.dp).testTag("goto_layoff_history_btn")
                             ) {
-                                Text("မှတ်တမ်း", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("မှတ်တမ်း", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                             }
                         }
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(90.dp))
         }
 
-        // Layoff Confirm Dialog:
-        // "တင်ကွက်များ ✕ — တင်မယ်ဆိုတာ သေချာပါသလား" with "(ALL) တင်မည်" and "(30) တင်မည်"
+        // Layoff Confirm Dialog
         if (showConfirmDialog) {
             AlertDialog(
                 onDismissRequest = { showConfirmDialog = false },
                 containerColor = LuckyCard,
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(14.dp),
                 title = {
                     Text(
-                        text = "တင်ကွက်များ ✕ — တင်မယ်ဆိုတာ သေချာပါသလား",
-                        color = Color.White,
-                        fontSize = 15.sp,
+                        text = "တင်ကွက်များ တင်ရန် သေချာပါသလား?",
+                        color = LuckyTextPrimary,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
                 },
@@ -392,15 +420,15 @@ fun BrakeScreen(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TextButton(
+                        OutlinedButton(
                             onClick = {
                                 showConfirmDialog = false
                                 viewModel.executeLayoff(isAll = false)
                             },
-                            colors = ButtonDefaults.textButtonColors(contentColor = LuckyLime),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = LuckyHeader),
                             modifier = Modifier.testTag("layoff_30_btn")
                         ) {
-                            Text("(30) တင်မည်", fontWeight = FontWeight.Bold)
+                            Text("၃၀ လုံး တင်မည်", fontWeight = FontWeight.Bold)
                         }
 
                         Spacer(modifier = Modifier.width(8.dp))
@@ -413,14 +441,14 @@ fun BrakeScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = LuckyDanger, contentColor = Color.White),
                             modifier = Modifier.testTag("layoff_all_btn")
                         ) {
-                            Text("(ALL) တင်မည်", fontWeight = FontWeight.Bold)
+                            Text("အားလုံး တင်မည်", fontWeight = FontWeight.Bold)
                         }
                     }
                 },
                 dismissButton = {
                     TextButton(
                         onClick = { showConfirmDialog = false },
-                        colors = ButtonDefaults.textButtonColors(contentColor = LuckyTextMuted)
+                        colors = ButtonDefaults.textButtonColors(contentColor = LuckyTextSecondary)
                     ) {
                         Text("မလုပ်တော့ပါ")
                     }

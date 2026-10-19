@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Lucky2d"
+rootProject.name = "Lucky2D"
 include(":app")
