@@ -27,9 +27,8 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.MainViewModel
 import com.example.ui.Screen
 import com.example.ui.components.AppHeader
+import com.example.ui.components.fmt
 import com.example.ui.theme.*
-import java.text.NumberFormat
-import java.util.Locale
 
 @Composable
 fun BrakeScreen(
@@ -67,8 +66,6 @@ fun BrakeScreen(
 
     val totalRetained = leftRetainedList.sumOf { it.second }
     val totalLayoff = rightLayoffList.sumOf { it.second }
-
-    val numFormat = NumberFormat.getNumberInstance(Locale.US)
 
     Box(modifier = modifier.fillMaxSize().background(LuckyBg)) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -119,7 +116,7 @@ fun BrakeScreen(
 
                     OutlinedTextField(
                         value = currentBrakeInput,
-                        onValueChange = { viewModel.updateBrakeLimit(it) },
+                        onValueChange = { viewModel.updateBrakeLimit(it.filter { c -> c.isDigit() }) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -223,7 +220,7 @@ fun BrakeScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(num, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                        Text(numFormat.format(amt), color = LuckyLime, fontSize = 13.sp)
+                                        Text(fmt(amt), color = LuckyLime, fontSize = 13.sp)
                                     }
                                     Divider(color = LuckyBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
                                 }
@@ -263,7 +260,7 @@ fun BrakeScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(num, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                        Text(numFormat.format(amt), color = LuckyDanger, fontSize = 13.sp)
+                                        Text(fmt(amt), color = LuckyDanger, fontSize = 13.sp)
                                     }
                                     Divider(color = LuckyBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
                                 }
@@ -281,7 +278,7 @@ fun BrakeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "စုစုပေါင်း: ${numFormat.format(totalRetained)}",
+                            text = "စုစုပေါင်း: ${fmt(totalRetained)}",
                             color = LuckyLime,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp,
@@ -289,7 +286,7 @@ fun BrakeScreen(
                             textAlign = TextAlign.Center
                         )
                         Text(
-                            text = "တင်ရန်: ${numFormat.format(totalLayoff)}",
+                            text = "တင်ရန်: ${fmt(totalLayoff)}",
                             color = LuckyDanger,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp,
@@ -384,7 +381,7 @@ fun BrakeScreen(
                 },
                 text = {
                     Text(
-                        text = "ဘရိတ် (${limit}) ထက် ကျော်လွန်နေသော တင်ကွက်များကို စာရင်းသွင်းမည်။\nတင်ရန် စုစုပေါင်း: ${numFormat.format(totalLayoff)} (${rightLayoffList.size} လုံး)",
+                        text = "ဘရိတ် (${fmt(limit)}) ထက် ကျော်လွန်နေသော တင်ကွက်များကို စာရင်းသွင်းမည်။\nတင်ရန် စုစုပေါင်း: ${fmt(totalLayoff)} (${rightLayoffList.size} လုံး)",
                         color = LuckyTextSecondary,
                         fontSize = 13.sp
                     )

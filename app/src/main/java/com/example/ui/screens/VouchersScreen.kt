@@ -33,10 +33,9 @@ import com.example.ui.components.DeleteConfirmDialog
 import com.example.ui.components.EmptyListPlaceholder
 import com.example.ui.components.SearchPill
 import com.example.ui.components.ShareHelper
+import com.example.ui.components.fmt
 import com.example.ui.components.recordLongPress
 import com.example.ui.theme.*
-import java.text.NumberFormat
-import java.util.Locale
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -70,8 +69,6 @@ fun VouchersScreen(
                         v.no.toString() == searchQuery.trim() ||
                         v.items.any { it.n == searchQuery.trim() })
     }
-
-    val numFormat = NumberFormat.getNumberInstance(Locale.US)
 
     Box(modifier = modifier.fillMaxSize().background(LuckyBg)) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -220,8 +217,6 @@ fun VoucherCard(
     onShare: () -> Unit,
     onPrint: () -> Unit
 ) {
-    val numFormat = NumberFormat.getNumberInstance(Locale.US)
-
     Card(
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = LuckyCard),
@@ -334,7 +329,7 @@ fun VoucherCard(
                                 fontSize = 15.sp
                             )
                             Text(
-                                text = "= ${numFormat.format(item.a)}",
+                                text = "= ${fmt(item.a)}",
                                 color = Color(0xFF235347),
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 14.sp
@@ -356,7 +351,7 @@ fun VoucherCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "စုစုပေါင်း : ${numFormat.format(voucher.totalAmount)}",
+                    text = "စုစုပေါင်း : ${fmt(voucher.totalAmount)}",
                     color = LuckyLime,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
@@ -382,7 +377,6 @@ fun VoucherCard(
 }
 
 private fun buildReceiptText(voucher: Voucher): String {
-    val numFormat = NumberFormat.getNumberInstance(Locale.US)
     val sb = StringBuilder()
     sb.appendLine("=== Lucky2d ဘောင်ချာ ===")
     sb.appendLine("အမှတ် : No.${voucher.no}")
@@ -391,10 +385,10 @@ private fun buildReceiptText(voucher: Voucher): String {
     sb.appendLine("ထိုးသူ : ${voucher.agent} (ID: ${voucher.agentId})")
     sb.appendLine("--------------------------")
     voucher.items.forEachIndexed { i, itm ->
-        sb.appendLine("${i + 1}. ${itm.n} = ${numFormat.format(itm.a)}")
+        sb.appendLine("${i + 1}. ${itm.n} = ${fmt(itm.a)}")
     }
     sb.appendLine("--------------------------")
-    sb.appendLine("စုစုပေါင်း : ${numFormat.format(voucher.totalAmount)}")
+    sb.appendLine("စုစုပေါင်း : ${fmt(voucher.totalAmount)}")
     sb.appendLine("==========================")
     return sb.toString()
 }

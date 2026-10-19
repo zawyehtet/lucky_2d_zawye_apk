@@ -419,7 +419,6 @@ class StorageRepository(context: Context) {
                 AppSettings(
                     maxBet = obj.optLong("maxBet", 9999999L),
                     password = obj.optString("password", "1234"),
-                    guarantor = obj.optString("guarantor", ""),
                     brakeLimit = obj.optLong("brakeLimit", 50000L)
                 )
             }
@@ -434,7 +433,6 @@ class StorageRepository(context: Context) {
             val obj = JSONObject().apply {
                 put("maxBet", settings.maxBet)
                 put("password", settings.password)
-                put("guarantor", settings.guarantor)
                 put("brakeLimit", settings.brakeLimit)
             }
             prefs.edit().putString(KEY_SETTINGS, obj.toString()).apply()

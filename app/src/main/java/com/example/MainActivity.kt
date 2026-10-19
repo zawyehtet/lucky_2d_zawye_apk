@@ -98,6 +98,7 @@ class MainActivity : ComponentActivity() {
                                 Screen.SETTLEMENT -> SettlementScreen(viewModel = viewModel)
                                 Screen.SETTINGS -> SettingsScreen(viewModel = viewModel)
                                 Screen.LAYOFF_HISTORY -> LayoffHistoryScreen(viewModel = viewModel)
+                                Screen.AGENT_SETTLEMENT -> AgentSettlementScreen(viewModel = viewModel)
                             }
                         }
                     }

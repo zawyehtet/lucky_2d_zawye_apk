@@ -20,14 +20,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.Session
 import com.example.data.WinRecord
 import com.example.ui.MainViewModel
+import com.example.ui.Screen
 import com.example.ui.components.AppHeader
 import com.example.ui.components.DeleteConfirmDialog
 import com.example.ui.components.RecordActionMenuDialog
@@ -47,7 +52,6 @@ fun SettingsScreen(
     val selectedDate by viewModel.selectedDate.collectAsState()
 
     var maxBetInput by remember(settings.maxBet) { mutableStateOf(settings.maxBet.toString()) }
-    var guarantorInput by remember(settings.guarantor) { mutableStateOf(settings.guarantor) }
 
     // Dialogs
     var showAddBlockedDialog by remember { mutableStateOf(false) }
@@ -94,7 +98,7 @@ fun SettingsScreen(
             contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header card with Max Bet input at top right & Guarantor
+            // Header card with Max Bet input at top right
             item {
                 Card(
                     shape = RoundedCornerShape(18.dp),
@@ -121,8 +125,9 @@ fun SettingsScreen(
                             OutlinedTextField(
                                 value = maxBetInput,
                                 onValueChange = {
-                                    maxBetInput = it
-                                    val amt = it.toLongOrNull()
+                                    val digitsOnly = it.filter { c -> c.isDigit() }
+                                    maxBetInput = digitsOnly
+                                    val amt = digitsOnly.toLongOrNull()
                                     if (amt != null && amt > 0) {
                                         viewModel.updateMaxBet(amt)
                                     }
@@ -137,40 +142,6 @@ fun SettingsScreen(
                                 ),
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.width(130.dp).height(48.dp).testTag("max_bet_input")
-                            )
-                        }
-
-                        Divider(color = LuckyBorder, thickness = 0.5.dp)
-
-                        // Guarantor Name ("အာမခံပေးသူ")
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "အာမခံပေးသူ",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
-                            )
-
-                            OutlinedTextField(
-                                value = guarantorInput,
-                                onValueChange = {
-                                    guarantorInput = it
-                                    viewModel.updateGuarantor(it)
-                                },
-                                placeholder = { Text("အမည် ရိုက်ထည့်ပါ", color = LuckyTextMuted, fontSize = 12.sp) },
-                                singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = LuckyLime,
-                                    unfocusedBorderColor = LuckyBorder,
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
-                                ),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.width(170.dp).height(48.dp).testTag("guarantor_input")
                             )
                         }
                     }
@@ -333,15 +304,33 @@ fun SettingsScreen(
                                 fontSize = 14.sp
                             )
 
-                            IconButton(
-                                onClick = { showAddWinDialog = true },
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(CircleShape)
-                                    .background(LuckyHeader)
-                                    .testTag("add_win_btn")
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Default.Add, contentDescription = "Add Win", tint = LuckyLime, modifier = Modifier.size(18.dp))
+                                Button(
+                                    onClick = { viewModel.navigateTo(Screen.AGENT_SETTLEMENT) },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = LuckyHeader,
+                                        contentColor = LuckyLime
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.height(32.dp).testTag("open_agent_settlement_btn")
+                                ) {
+                                    Text("2D စာရင်းချုပ်", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                IconButton(
+                                    onClick = { showAddWinDialog = true },
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(LuckyHeader)
+                                        .testTag("add_win_btn")
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = "Add Win", tint = LuckyLime, modifier = Modifier.size(18.dp))
+                                }
                             }
                         }
 
@@ -366,7 +355,14 @@ fun SettingsScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .recordLongPress(onLongPress = { winToManage = win })
+                                        .recordLongPress(
+                                            onClick = {
+                                                viewModel.setDate(win.date)
+                                                viewModel.setSession(win.session)
+                                                viewModel.navigateTo(Screen.AGENT_SETTLEMENT)
+                                            },
+                                            onLongPress = { winToManage = win }
+                                        )
                                         .padding(horizontal = 10.dp, vertical = 6.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
@@ -494,6 +490,26 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            // Fixed constant footer line below the Reset row, above the bottom navigation
+            item {
+                Text(
+                    text = buildAnnotatedString {
+                        withStyle(SpanStyle(color = Color(0xFF7F978F))) {
+                            append("Power By ZY ")
+                        }
+                        withStyle(SpanStyle(color = LuckyLime, fontWeight = FontWeight.SemiBold)) {
+                            append("ShweKhinMyay")
+                        }
+                    },
+                    fontSize = 12.sp,
+                    letterSpacing = 0.5.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 20.dp)
+                )
+            }
         }
 
         // Add Blocked Dialog
@@ -527,6 +543,7 @@ fun SettingsScreen(
                 onAdd = { num ->
                     viewModel.setWinningNumber(num)
                     showAddWinDialog = false
+                    viewModel.navigateTo(Screen.AGENT_SETTLEMENT)
                 }
             )
         }

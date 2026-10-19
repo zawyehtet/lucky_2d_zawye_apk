@@ -29,8 +29,6 @@ import com.example.data.Agent
 import com.example.ui.MainViewModel
 import com.example.ui.components.*
 import com.example.ui.theme.*
-import java.text.NumberFormat
-import java.util.Locale
 
 @Composable
 fun AgentsScreen(
@@ -56,8 +54,6 @@ fun AgentsScreen(
     val filteredAgents = agents.filter {
         searchQuery.isBlank() || it.name.contains(searchQuery, ignoreCase = true) || it.id.toString() == searchQuery.trim()
     }
-
-    val numFormat = NumberFormat.getNumberInstance(Locale.US)
 
     Box(modifier = modifier.fillMaxSize().background(LuckyBg)) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -204,7 +200,6 @@ fun AgentCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val numFormat = NumberFormat.getNumberInstance(Locale.US)
     var showMenu by remember { mutableStateOf(false) }
 
     if (showMenu) {
@@ -301,7 +296,7 @@ fun AgentCard(
                 }
             }
 
-            // Bottom stats grid: စုပေါင်း, ကော်, နုပ်ပြီးငွေ, ဘောင်ချာ, ပေးငွေ (plain numbers, no Ks)
+            // Bottom stats grid: စုပေါင်း, ကော်, နုပ်ပြီးငွေ, ဘောင်ချာ, ပေးငွေ (plain numbers)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -312,9 +307,9 @@ fun AgentCard(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    StatCell(label = "စုပေါင်း", value = numFormat.format(totalBet))
-                    StatCell(label = "ကော်", value = numFormat.format(commission))
-                    StatCell(label = "နုပ်ပြီးငွေ", value = numFormat.format(netAmount), isHighlight = true)
+                    StatCell(label = "စုပေါင်း", value = fmt(totalBet))
+                    StatCell(label = "ကော်", value = fmt(commission))
+                    StatCell(label = "နုပ်ပြီးငွေ", value = fmt(netAmount), isHighlight = true)
                 }
 
                 Divider(color = LuckyBorder, thickness = 0.5.dp)
@@ -326,7 +321,7 @@ fun AgentCard(
                     StatCell(label = "ဘောင်ချာ", value = "$voucherCount စောင်")
                     StatCell(
                         label = "ပေးငွေ",
-                        value = numFormat.format(payout),
+                        value = fmt(payout),
                         valueColor = if (payout > 0) LuckyDanger else LuckyTextSecondary
                     )
                     Spacer(modifier = Modifier.weight(1f))

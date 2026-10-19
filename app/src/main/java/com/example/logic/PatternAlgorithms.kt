@@ -204,8 +204,8 @@ object PatternAlgorithms {
         var skipped = 0
         val blockedList = mutableListOf<String>()
 
-        // Split text by commas, newlines, spaces, or semicolons
-        val tokens = text.split(Regex("[\\s,;|\n\r]+")).filter { it.isNotBlank() }
+        // Split text by whitespace, newlines, pipes, semicolons, or commas separating distinct entries (preserving invalid comma amounts like 78=500,00 so they fail validation)
+        val tokens = text.split(Regex("[\\s;|\n\r]+|,(?=\\s|$|[0-9]{1,2}[.=rR]|[0-9][abtwABTW]|[pnsxPNSX][0-9])")).filter { it.isNotBlank() }
 
         for (token in tokens) {
             try {
@@ -310,7 +310,7 @@ object PatternAlgorithms {
         var skipped = 0
         val blockedList = mutableListOf<String>()
 
-        val tokens = text.split(Regex("[\\s,;|\n\r]+")).filter { it.isNotBlank() }
+        val tokens = text.split(Regex("[\\s;|\n\r]+|,(?=\\s|$|[0-9]{1,2}[.=rR]|[0-9][abtwABTW]|[pnsxPNSX][0-9])")).filter { it.isNotBlank() }
 
         for (rawToken in tokens) {
             val token = rawToken.lowercase().trim()

@@ -39,12 +39,12 @@ import com.example.data.BetItem
 import com.example.logic.PatternAlgorithms
 import com.example.ui.MainViewModel
 import com.example.ui.Screen
+import androidx.compose.ui.text.style.TextOverflow
 import com.example.ui.components.DeleteConfirmDialog
+import com.example.ui.components.fmt
 import com.example.ui.components.recordLongPress
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
-import java.text.NumberFormat
-import java.util.Locale
 
 @Composable
 fun NumberEntryScreen(
@@ -88,7 +88,6 @@ fun NumberEntryScreen(
         viewModel.goBack()
     }
 
-    val numFormat = NumberFormat.getNumberInstance(Locale.US)
     val totalAmount = entryItems.sumOf { it.a }
 
     fun onKeypadNumPress(num: String) {
@@ -105,8 +104,9 @@ fun NumberEntryScreen(
                 }
             }
         } else {
+            val digitsOnly = num.filter { it.isDigit() }
             if (inputAmount.length < 8) {
-                inputAmount += num
+                inputAmount = (inputAmount + digitsOnly).take(8)
             }
         }
     }
@@ -261,11 +261,12 @@ fun NumberEntryScreen(
                 )
             }
 
-            // Entered Bets Table (စဉ် | ဂဏန်း | ပမာဏ) - min height ~140dp, auto-scroll to newest row
+            // Entered Bets Table (စဉ် | ဂဏန်း | ပမာဏ) - min height 140dp, auto-scroll to newest row
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f) // Takes remaining upper space
+                    .weight(1f)
+                    .heightIn(min = 140.dp)
                     .background(LuckyBg)
             ) {
                 // Table Header
@@ -328,7 +329,7 @@ fun NumberEntryScreen(
                                     textAlign = TextAlign.Center
                                 )
                                 Text(
-                                    text = numFormat.format(item.a),
+                                    text = fmt(item.a),
                                     color = Color.White,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 14.sp,
@@ -392,7 +393,7 @@ fun NumberEntryScreen(
 
                 // စုစုပေါင်း = N
                 Text(
-                    text = "စုစုပေါင်း = ${numFormat.format(totalAmount)}",
+                    text = "စုစုပေါင်း = ${fmt(totalAmount)}",
                     color = LuckyLime,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp
@@ -415,18 +416,19 @@ fun NumberEntryScreen(
                 }
             }
 
-            // Compact Keypad
+            // Compact Keypad (pinned to bottom, 5 equal columns, 4dp gap, same horizontal padding as screen)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(LuckyCard)
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                // 3 Preview Cells (ဂဏန်း | ဒဲ့/pattern | ပမာဏ)
+                // 3 Preview Cells (ဂဏန်း | ဒဲ့/pattern | ပမာဏ) - 3 equal columns, 40dp height, 4dp gap
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     // Number Cell
                     PreviewCell(
@@ -444,7 +446,7 @@ fun NumberEntryScreen(
                         value = patternDisplay,
                         isActive = false,
                         onClick = {},
-                        modifier = Modifier.weight(1.2f)
+                        modifier = Modifier.weight(1f)
                     )
 
                     // Amount Cell
@@ -457,13 +459,14 @@ fun NumberEntryScreen(
                     )
                 }
 
-                // Horizontally Scrollable Pattern Row
+                // Horizontally Scrollable Pattern Row (each 72dp x 40dp, 4dp gap, right padding so last button is reachable)
                 val patterns = listOf("ပါဝါ", "ညီအစ်ကို", "ထိပ်", "နောက်", "အပူး", "စုံစုံ", "မမ", "စုံမ", "မစုံ", "ဘရိတ်")
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        .horizontalScroll(rememberScrollState())
+                        .padding(end = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     // "ဒဲ့" button to reset pattern
                     KeypadSmallButton(
@@ -489,133 +492,126 @@ fun NumberEntryScreen(
                     }
                 }
 
-                // Keypad Grid: Left Column + Numpad
+                // 5-Column Equal Grid (4 rows, 5 equal columns, 4dp gap)
+                // Row 1: နက္ခတ် | 1 | 2 | 3 | R
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    // Left Column: နက္ခတ်, ခွေ, အပါ, ဖျက် (red)
-                    Column(
+                    KeypadBtn(
+                        text = "နက္ခတ်",
+                        bgColor = if (inputPattern == "နက္ခတ်") LuckyLime else LuckyHeader,
+                        textColor = if (inputPattern == "နက္ခတ်") LuckyBg else Color.White,
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        KeypadBtn(
-                            text = "နက္ခတ်",
-                            bgColor = if (inputPattern == "နက္ခတ်") LuckyLimeDark else LuckyHeader,
-                            textColor = if (inputPattern == "နက္ခတ်") LuckyBg else Color.White,
-                            onClick = { inputPattern = "နက္ခတ်" }
-                        )
-                        KeypadBtn(
-                            text = "ခွေ",
-                            bgColor = if (inputPattern == "ခွေ") LuckyLimeDark else LuckyHeader,
-                            textColor = if (inputPattern == "ခွေ") LuckyBg else Color.White,
-                            onClick = {
-                                inputPattern = "ခွေ"
-                                activeField = "NUMBER"
+                        onClick = { inputPattern = "နက္ခတ်" }
+                    )
+                    NumKey("1", Modifier.weight(1f)) { onKeypadNumPress("1") }
+                    NumKey("2", Modifier.weight(1f)) { onKeypadNumPress("2") }
+                    NumKey("3", Modifier.weight(1f)) { onKeypadNumPress("3") }
+                    KeypadBtn(
+                        text = "R",
+                        bgColor = if (isReverseOn) LuckyLime else LuckyHeader,
+                        textColor = if (isReverseOn) LuckyBg else Color.White,
+                        modifier = Modifier.weight(1f),
+                        onClick = { isReverseOn = !isReverseOn }
+                    )
+                }
+
+                // Row 2: ခွေ | 4 | 5 | 6 | /
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    KeypadBtn(
+                        text = "ခွေ",
+                        bgColor = if (inputPattern == "ခွေ") LuckyLime else LuckyHeader,
+                        textColor = if (inputPattern == "ခွေ") LuckyBg else Color.White,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            inputPattern = "ခွေ"
+                            activeField = "NUMBER"
+                        }
+                    )
+                    NumKey("4", Modifier.weight(1f)) { onKeypadNumPress("4") }
+                    NumKey("5", Modifier.weight(1f)) { onKeypadNumPress("5") }
+                    NumKey("6", Modifier.weight(1f)) { onKeypadNumPress("6") }
+                    KeypadBtn(
+                        text = "/",
+                        bgColor = LuckyHeader,
+                        textColor = Color.White,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            activeField = if (activeField == "NUMBER") "AMOUNT" else "NUMBER"
+                        }
+                    )
+                }
+
+                // Row 3: အပါ | 7 | 8 | 9 | ENTER
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    KeypadBtn(
+                        text = "အပါ",
+                        bgColor = if (inputPattern == "အပါ") LuckyLime else LuckyHeader,
+                        textColor = if (inputPattern == "အပါ") LuckyBg else Color.White,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            inputPattern = "အပါ"
+                            activeField = "NUMBER"
+                        }
+                    )
+                    NumKey("7", Modifier.weight(1f)) { onKeypadNumPress("7") }
+                    NumKey("8", Modifier.weight(1f)) { onKeypadNumPress("8") }
+                    NumKey("9", Modifier.weight(1f)) { onKeypadNumPress("9") }
+                    KeypadBtn(
+                        text = "ENTER",
+                        bgColor = LuckyHeader,
+                        textColor = Color.White,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            activeField = if (activeField == "NUMBER") "AMOUNT" else "NUMBER"
+                        }
+                    )
+                }
+
+                // Row 4: ဖျက် | 0 | 00 | 000 | OK
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    KeypadBtn(
+                        text = "ဖျက်",
+                        bgColor = LuckyDanger,
+                        textColor = Color.White,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            if (activeField == "NUMBER" && inputNumber.isNotEmpty()) {
+                                inputNumber = inputNumber.dropLast(1)
+                            } else if (activeField == "AMOUNT" && inputAmount.isNotEmpty()) {
+                                inputAmount = inputAmount.dropLast(1)
+                            } else {
+                                viewModel.removeLastEntryItem()
                             }
-                        )
-                        KeypadBtn(
-                            text = "အပါ",
-                            bgColor = if (inputPattern == "အပါ") LuckyLimeDark else LuckyHeader,
-                            textColor = if (inputPattern == "အပါ") LuckyBg else Color.White,
-                            onClick = {
-                                inputPattern = "အပါ"
-                                activeField = "NUMBER"
+                        }
+                    )
+                    NumKey("0", Modifier.weight(1f)) { onKeypadNumPress("0") }
+                    NumKey("00", Modifier.weight(1f)) { onKeypadNumPress("00") }
+                    NumKey("000", Modifier.weight(1f)) { onKeypadNumPress("000") }
+                    KeypadBtn(
+                        text = "OK",
+                        bgColor = LuckyLime,
+                        textColor = LuckyBg,
+                        isBold = true,
+                        modifier = Modifier.weight(1f).testTag("keypad_ok_btn"),
+                        onClick = {
+                            if (inputPattern == "ခွေ") {
+                                showKwayDialog = true
+                            } else {
+                                handleAddBet(false)
                             }
-                        )
-                        KeypadBtn(
-                            text = "ဖျက်",
-                            bgColor = LuckyDanger,
-                            textColor = Color.White,
-                            onClick = {
-                                if (activeField == "NUMBER" && inputNumber.isNotEmpty()) {
-                                    inputNumber = inputNumber.dropLast(1)
-                                } else if (activeField == "AMOUNT" && inputAmount.isNotEmpty()) {
-                                    inputAmount = inputAmount.dropLast(1)
-                                } else {
-                                    // if both fields are empty, remove last row as per requirement!
-                                    viewModel.removeLastEntryItem()
-                                }
-                            }
-                        )
-                    }
-
-                    // Numpad 4 columns:
-                    // Row 1: 1, 2, 3, R
-                    // Row 2: 4, 5, 6, "/"
-                    // Row 3: 7, 8, 9, ENTER
-                    // Row 4: 0, 00, 000, OK (lime)
-                    Column(
-                        modifier = Modifier.weight(3.5f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        // Row 1
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            NumKey("1", Modifier.weight(1f)) { onKeypadNumPress("1") }
-                            NumKey("2", Modifier.weight(1f)) { onKeypadNumPress("2") }
-                            NumKey("3", Modifier.weight(1f)) { onKeypadNumPress("3") }
-                            KeypadBtn(
-                                text = "R",
-                                bgColor = if (isReverseOn) LuckyLime else LuckyKeyBg,
-                                textColor = if (isReverseOn) LuckyBg else Color.White,
-                                modifier = Modifier.weight(1f),
-                                onClick = { isReverseOn = !isReverseOn }
-                            )
                         }
-
-                        // Row 2
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            NumKey("4", Modifier.weight(1f)) { onKeypadNumPress("4") }
-                            NumKey("5", Modifier.weight(1f)) { onKeypadNumPress("5") }
-                            NumKey("6", Modifier.weight(1f)) { onKeypadNumPress("6") }
-                            KeypadBtn(
-                                text = "/",
-                                bgColor = LuckyKeyBg,
-                                textColor = LuckyLime,
-                                modifier = Modifier.weight(1f),
-                                onClick = {
-                                    activeField = if (activeField == "NUMBER") "AMOUNT" else "NUMBER"
-                                }
-                            )
-                        }
-
-                        // Row 3
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            NumKey("7", Modifier.weight(1f)) { onKeypadNumPress("7") }
-                            NumKey("8", Modifier.weight(1f)) { onKeypadNumPress("8") }
-                            NumKey("9", Modifier.weight(1f)) { onKeypadNumPress("9") }
-                            KeypadBtn(
-                                text = "ENT",
-                                bgColor = LuckyKeyBg,
-                                textColor = LuckyLime,
-                                modifier = Modifier.weight(1f),
-                                onClick = {
-                                    activeField = if (activeField == "NUMBER") "AMOUNT" else "NUMBER"
-                                }
-                            )
-                        }
-
-                        // Row 4
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            NumKey("0", Modifier.weight(1f)) { onKeypadNumPress("0") }
-                            NumKey("00", Modifier.weight(1f)) { onKeypadNumPress("00") }
-                            NumKey("000", Modifier.weight(1f)) { onKeypadNumPress("000") }
-                            KeypadBtn(
-                                text = "OK",
-                                bgColor = LuckyLime,
-                                textColor = LuckyBg,
-                                isBold = true,
-                                modifier = Modifier.weight(1f).testTag("keypad_ok_btn"),
-                                onClick = {
-                                    if (inputPattern == "ခွေ") {
-                                        showKwayDialog = true
-                                    } else {
-                                        handleAddBet(false)
-                                    }
-                                }
-                            )
-                        }
-                    }
+                    )
                 }
             }
         }
@@ -726,7 +722,7 @@ fun PreviewCell(
 ) {
     Box(
         modifier = modifier
-            .height(38.dp)
+            .height(40.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(if (isActive) LuckyLimeDark.copy(alpha = 0.25f) else LuckyCardDark)
             .border(
@@ -735,21 +731,27 @@ fun PreviewCell(
                 shape = RoundedCornerShape(8.dp)
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 2.dp),
+            .padding(horizontal = 4.dp),
         contentAlignment = Alignment.Center
     ) {
         if (value.isBlank()) {
             Text(
                 text = title,
                 color = LuckyTextMuted,
-                fontSize = 12.sp
+                fontSize = 12.sp,
+                maxLines = 1,
+                softWrap = false,
+                textAlign = TextAlign.Center
             )
         } else {
             Text(
                 text = value,
                 color = if (isActive) LuckyLime else Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
+                fontSize = 14.sp,
+                maxLines = 1,
+                softWrap = false,
+                textAlign = TextAlign.Center
             )
         }
     }
@@ -763,17 +765,23 @@ fun KeypadSmallButton(
 ) {
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .width(72.dp)
+            .height(40.dp)
+            .clip(RoundedCornerShape(10.dp))
             .background(if (isSelected) LuckyLime else LuckyHeader)
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 4.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
             color = if (isSelected) LuckyBg else Color.White,
             fontWeight = FontWeight.Bold,
-            fontSize = 11.sp
+            fontSize = 12.sp,
+            lineHeight = 14.sp,
+            maxLines = 1,
+            softWrap = false,
+            textAlign = TextAlign.Center
         )
     }
 }
@@ -789,17 +797,23 @@ fun KeypadBtn(
 ) {
     Box(
         modifier = modifier
-            .height(42.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .height(44.dp)
+            .clip(RoundedCornerShape(14.dp))
             .background(bgColor)
-            .clickable(onClick = onClick),
+            .clickable(onClick = onClick)
+            .padding(horizontal = 2.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
             color = textColor,
             fontWeight = if (isBold) FontWeight.Bold else FontWeight.SemiBold,
-            fontSize = 14.sp
+            fontSize = if (text == "ENTER") 13.sp else 15.sp,
+            lineHeight = 18.sp,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Visible,
+            textAlign = TextAlign.Center
         )
     }
 }
@@ -868,7 +882,7 @@ fun EditBetItemDialog(
                     OutlinedTextField(
                         value = amountStr,
                         onValueChange = {
-                            amountStr = it
+                            amountStr = it.filter { c -> c.isDigit() }
                             errorMsg = null
                         },
                         label = { Text("ပမာဏ") },

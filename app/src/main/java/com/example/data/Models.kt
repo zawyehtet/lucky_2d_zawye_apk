@@ -69,7 +69,6 @@ data class SettledRecord(
 data class AppSettings(
     val maxBet: Long = 9999999L,
     val password: String = "1234",
-    val guarantor: String = "",
     val brakeLimit: Long = 50000L
 )
 

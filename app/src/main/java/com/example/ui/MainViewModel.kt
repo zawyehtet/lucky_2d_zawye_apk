@@ -25,7 +25,8 @@ enum class Screen {
     BRAKE,
     SETTLEMENT,
     SETTINGS,
-    LAYOFF_HISTORY
+    LAYOFF_HISTORY,
+    AGENT_SETTLEMENT
 }
 
 data class NumberSummary(
@@ -33,6 +34,17 @@ data class NumberSummary(
     val totalBet: Long,
     val layoffAmount: Long,
     val netAmount: Long
+)
+
+data class Agent2DSettlementItem(
+    val agent: Agent,
+    val voucherCount: Int,
+    val totalBet: Long,
+    val commission: Long,
+    val netAmount: Long,
+    val winBetAmount: Long,
+    val payout: Long,
+    val profitLoss: Long
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -131,6 +143,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setSession(session: String) {
         _selectedSession.value = session
+    }
+
+    fun setDate(date: String) {
+        _selectedDate.value = date
     }
 
     fun navigateTo(screen: Screen) {
@@ -627,6 +643,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    fun getAgent2DSettlementList(winNum: String): List<Agent2DSettlementItem> {
+        val allVouchers = getFilteredVouchers()
+        return _agents.value.map { agent ->
+            val agentVouchers = allVouchers.filter { it.agentId == agent.id || it.agent == agent.name }
+            var totalBet = 0L
+            var winBetAmount = 0L
+            agentVouchers.forEach { v ->
+                v.items.forEach { item ->
+                    totalBet += item.a
+                    if (winNum.isNotEmpty() && item.n == winNum) {
+                        winBetAmount += item.a
+                    }
+                }
+            }
+            val commission = Math.round(totalBet.toDouble() * (agent.rate / 100.0))
+            val netAmount = (totalBet - commission).coerceAtLeast(0L)
+            val payout = if (winNum.isNotEmpty() && agent.mult > 0.0) {
+                Math.round(winBetAmount.toDouble() * agent.mult)
+            } else 0L
+            val profitLoss = netAmount - payout
+            Agent2DSettlementItem(
+                agent = agent,
+                voucherCount = agentVouchers.size,
+                totalBet = totalBet,
+                commission = commission,
+                netAmount = netAmount,
+                winBetAmount = winBetAmount,
+                payout = payout,
+                profitLoss = profitLoss
+            )
+        }
+    }
+
     fun commitSettlement(calc: SettledCalculation) {
         val record = SettledRecord(
             id = System.currentTimeMillis(),
@@ -728,12 +777,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _settings.value = updated
         repository.saveSettings(updated)
         showToast("အများဆုံးထိုးကြေး ပြင်ဆင်ပြီးပါပြီ")
-    }
-
-    fun updateGuarantor(guarantor: String) {
-        val updated = _settings.value.copy(guarantor = guarantor)
-        _settings.value = updated
-        repository.saveSettings(updated)
     }
 
     fun changePassword(current: String, newPass: String): Boolean {

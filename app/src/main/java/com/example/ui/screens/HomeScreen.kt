@@ -33,8 +33,6 @@ import com.example.ui.MainViewModel
 import com.example.ui.Screen
 import com.example.ui.components.*
 import com.example.ui.theme.*
-import java.text.NumberFormat
-import java.util.Locale
 
 @Composable
 fun HomeScreen(
@@ -50,8 +48,6 @@ fun HomeScreen(
     val currentVouchers = remember(vouchers, selectedDate, selectedSession) {
         vouchers.filter { it.date == selectedDate && it.session == selectedSession }
     }
-
-    val numFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
 
     var voucherToDelete by remember { mutableStateOf<Voucher?>(null) }
     var menuVoucher by remember { mutableStateOf<Voucher?>(null) }
@@ -97,7 +93,7 @@ fun HomeScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = numFormat.format(totalRetained),
+                            text = fmt(totalRetained),
                             color = LuckyLime,
                             fontSize = 28.sp,
                             fontWeight = FontWeight.Bold
@@ -310,7 +306,6 @@ fun VoucherItemRow(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null
 ) {
-    val numFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -359,7 +354,7 @@ fun VoucherItemRow(
         }
 
         Text(
-            text = numFormat.format(voucher.totalAmount),
+            text = fmt(voucher.totalAmount),
             color = LuckyLime,
             fontWeight = FontWeight.Bold,
             fontSize = 15.sp

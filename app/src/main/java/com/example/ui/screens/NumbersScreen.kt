@@ -19,9 +19,8 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.MainViewModel
 import com.example.ui.components.AppHeader
 import com.example.ui.components.SearchPill
+import com.example.ui.components.fmt
 import com.example.ui.theme.*
-import java.text.NumberFormat
-import java.util.Locale
 
 @Composable
 fun NumbersScreen(
@@ -47,7 +46,6 @@ fun NumbersScreen(
     }
 
     val grandTotal = filteredSummaries.sumOf { it.netAmount }
-    val numFormat = NumberFormat.getNumberInstance(Locale.US)
 
     Column(
         modifier = modifier
@@ -174,7 +172,7 @@ fun NumbersScreen(
                                     )
                                     if (item.layoffAmount > 0) {
                                         Text(
-                                            text = "(တင်: -${numFormat.format(item.layoffAmount)})",
+                                            text = "(တင်: -${fmt(item.layoffAmount)})",
                                             color = LuckyDanger,
                                             fontSize = 10.sp
                                         )
@@ -182,7 +180,7 @@ fun NumbersScreen(
                                 }
 
                                 Text(
-                                    text = numFormat.format(item.netAmount),
+                                    text = fmt(item.netAmount),
                                     color = Color.White,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 15.sp,
@@ -210,7 +208,7 @@ fun NumbersScreen(
                         fontSize = 15.sp
                     )
                     Text(
-                        text = numFormat.format(grandTotal),
+                        text = fmt(grandTotal),
                         color = LuckyLime,
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp

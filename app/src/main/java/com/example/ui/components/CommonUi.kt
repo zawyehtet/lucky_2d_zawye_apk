@@ -421,3 +421,8 @@ object ShareHelper {
         Toast.makeText(context, "ပရင့်ထုတ်ရန် အချက်အလက် ကူးယူပြီးပါပြီ", Toast.LENGTH_LONG).show()
     }
 }
+
+fun fmt(n: Number): String = when (n) {
+    is Long, is Int, is Short, is Byte -> n.toLong().toString()
+    else -> kotlin.math.round(n.toDouble()).toLong().toString()
+}

@@ -28,8 +28,6 @@ import com.example.data.LayoffRecord
 import com.example.ui.MainViewModel
 import com.example.ui.components.*
 import com.example.ui.theme.*
-import java.text.NumberFormat
-import java.util.Locale
 
 @Composable
 fun LayoffHistoryScreen(
@@ -50,7 +48,6 @@ fun LayoffHistoryScreen(
     var itemToDelete by remember { mutableStateOf<Pair<Int, LayoffItem>?>(null) }
 
     val filtered = layoffs.filter { it.date == selectedDate && (selectedSession.isEmpty() || it.session == selectedSession) }
-    val numFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
     val grandTotal = filtered.sumOf { it.total }
 
     Column(
@@ -164,7 +161,7 @@ fun LayoffHistoryScreen(
                                     Text("${idx + 1}.", color = LuckyTextMuted, fontSize = 12.sp, modifier = Modifier.width(32.dp))
                                     Text(record.time.substringAfter("/"), color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1.5f))
                                     Text(record.session, color = LuckyLime, fontSize = 12.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
-                                    Text(numFormat.format(record.total), color = LuckyDanger, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1.2f), textAlign = TextAlign.End)
+                                    Text(fmt(record.total), color = LuckyDanger, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1.2f), textAlign = TextAlign.End)
                                 }
                                 Divider(color = LuckyBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
                             }
@@ -188,7 +185,7 @@ fun LayoffHistoryScreen(
                             fontSize = 14.sp
                         )
                         Text(
-                            text = numFormat.format(grandTotal),
+                            text = fmt(grandTotal),
                             color = LuckyLime,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp
@@ -201,8 +198,8 @@ fun LayoffHistoryScreen(
         // Delete Batch Confirm Dialog
         batchToDelete?.let { record ->
             DeleteConfirmDialog(
-                title = "ဖျက်မည်လား?",
-                message = "တင်ကွက်မှတ်တမ်း (အချိန်: ${record.time} ၊ ပမာဏ: ${numFormat.format(record.total)}) ကို ဖျက်မည်လား?",
+                title = "ဖျက်ရန် သေချာပါသလား?",
+                message = "တင်ကွက်မှတ်တမ်း (အချိန်: ${record.time} ၊ ပမာဏ: ${fmt(record.total)}) ကို ဖျက်ရန် သေချာပါသလား?",
                 onDismiss = { batchToDelete = null },
                 onConfirm = {
                     viewModel.deleteLayoffRecord(record.id)
@@ -238,8 +235,8 @@ fun LayoffHistoryScreen(
                 text = {
                     Column(modifier = Modifier.fillMaxWidth().heightIn(max = 350.dp)) {
                         Text("အချိန် : ${record.time}", color = LuckyTextSecondary, fontSize = 12.sp)
-                        Text("ဘရိတ်သတ်မှတ်ချက် : ${numFormat.format(record.limit)}", color = LuckyTextSecondary, fontSize = 12.sp)
-                        Text("စုစုပေါင်း : ${numFormat.format(record.total)} (${record.items.size} လုံး)", color = LuckyLime, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("ဘရိတ်သတ်မှတ်ချက် : ${fmt(record.limit)}", color = LuckyTextSecondary, fontSize = 12.sp)
+                        Text("စုစုပေါင်း : ${fmt(record.total)} (${record.items.size} လုံး)", color = LuckyLime, fontWeight = FontWeight.Bold, fontSize = 13.sp)
 
                         Spacer(modifier = Modifier.height(10.dp))
 
@@ -261,7 +258,7 @@ fun LayoffHistoryScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text("${i + 1}. ${itm.n}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                    Text(numFormat.format(itm.a), color = LuckyDanger, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                    Text(fmt(itm.a), color = LuckyDanger, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                                 }
                                 Divider(color = LuckyBorder.copy(alpha = 0.3f), thickness = 0.5.dp)
                             }
@@ -283,8 +280,8 @@ fun LayoffHistoryScreen(
 
             if (showItemDeleteConfirm) {
                 DeleteConfirmDialog(
-                    title = "ဖျက်မည်လား?",
-                    message = "${itm.n} = ${numFormat.format(itm.a)} ကို ဖျက်မည်လား?",
+                    title = "ဖျက်ရန် သေချာပါသလား?",
+                    message = "${itm.n} = ${fmt(itm.a)} ကို ဖျက်ရန် သေချာပါသလား?",
                     onDismiss = { showItemDeleteConfirm = false },
                     onConfirm = {
                         selectedDetailRecord?.let { rec ->
@@ -359,17 +356,7 @@ fun LayoffHistoryScreen(
 }
 
 private fun buildLayoffDetailText(record: LayoffRecord): String {
-    val sb = StringBuilder()
-    sb.appendLine("=== Lucky2d တင်ကွက်မှတ်တမ်း ===")
-    sb.appendLine("အချိန် : ${record.time}")
-    sb.appendLine("အပိုင်း : ${record.session}")
-    sb.appendLine("ဘရိတ် : ${record.limit}")
-    sb.appendLine("--------------------------")
-    record.items.forEachIndexed { i, itm ->
-        sb.appendLine("${i + 1}. ${itm.n} = ${itm.a}")
-    }
-    sb.appendLine("--------------------------")
-    sb.appendLine("စုစုပေါင်း တင်ငွေ : ${record.total}")
-    sb.appendLine("==========================")
-    return sb.toString()
+    val sum = record.items.sumOf { it.a }
+    val lines = record.items.map { "${it.n}=${fmt(it.a)}" } + fmt(sum)
+    return lines.joinToString("\n")
 }
