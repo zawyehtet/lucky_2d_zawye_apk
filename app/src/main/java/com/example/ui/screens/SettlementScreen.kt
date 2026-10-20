@@ -332,7 +332,6 @@ fun SettlementScreen(viewModel: MainViewModel) {
             totalProfitLoss = totalProfitLoss,
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
                 .padding(horizontal = 8.dp)
                 .padding(bottom = 8.dp)
         )

@@ -71,7 +71,6 @@ fun NumbersScreen(
 
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var selectedNumberForBreakdown by rememberSaveable { mutableStateOf<String?>(null) }
-    var showWinEntryDialog by rememberSaveable { mutableStateOf(false) }
 
     val currentWinNum = remember(wins, selectedDate, selectedSession, hasRound) {
         if (hasRound) {
@@ -85,18 +84,10 @@ fun NumbersScreen(
         formatWinningNumberTwoDigits(currentWinNum)
     }
 
-    var inlineWinInput by rememberSaveable(currentWinNum, selectedDate, selectedSession) {
-        mutableStateOf(currentWinNum)
-    }
-
-    val showInlineSaveBtn = hasRound && MainViewModel.shouldShowSaveButton(inlineWinInput, currentWinNum)
-
-    val totalWinningPayout = remember(currentWinNum, vouchers, layoffs, agents, sessions, selectedDate, selectedSession) {
-        viewModel.getTotalWinningPayoutForNumber(currentWinNum)
-    }
-
     val summaries = remember(vouchers, layoffs, selectedDate, selectedSession) {
-        viewModel.getAggregatedNumbers()
+        viewModel.getAggregatedNumbers().sortedWith(
+            compareByDescending<com.example.ui.NumberSummary> { it.totalBet }.thenBy { it.n }
+        )
     }
 
     val winningSummaryItem = remember(summaries, formattedWinNum, hasValidWinNum) {
@@ -109,8 +100,8 @@ fun NumbersScreen(
         searchQuery.isBlank() || it.n.contains(searchQuery.trim())
     }
 
-    val grandTotal = filteredSummaries.sumOf { it.netAmount }
-    val totalEntriesCount = filteredSummaries.sumOf { it.entryCount }
+    // Consolidated total bet amount (sum of all bets placed across all numbers: လက်ခံကွက် + တင်ကွက်)
+    val grandTotal = filteredSummaries.sumOf { it.totalBet }
 
     Column(
         modifier = modifier
@@ -132,180 +123,6 @@ fun NumbersScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             RoundRequiredHelperBanner(visible = !hasRound)
-
-            // Winning Number & Total Winning Payout Highlight Card
-            Card(
-                shape = RoundedCornerShape(10.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (hasValidWinNum) Color(0xFFE8F5E9) else LuckyCard
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(
-                        width = 1.dp,
-                        color = if (hasValidWinNum) LuckySuccess else LuckyBorder,
-                        shape = RoundedCornerShape(10.dp)
-                    )
-                    .clickable(enabled = hasRound) {
-                        showWinEntryDialog = true
-                    }
-                    .testTag("winning_highlight_card")
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (hasValidWinNum) LuckySuccess else LuckyHeader),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (hasValidWinNum) {
-                                    Text(
-                                        text = formattedWinNum,
-                                        color = Color.White,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 17.sp
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Default.EmojiEvents,
-                                        contentDescription = stringResource(R.string.label_winning_number),
-                                        tint = Color.White,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-
-                            Column {
-                                Text(
-                                    text = if (hasValidWinNum) "ထွက်ဂဏန်း : $formattedWinNum" else "ထွက်ဂဏန်း မထည့်ရသေးပါ",
-                                    color = LuckyTextPrimary,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    maxLines = 1
-                                )
-                                Text(
-                                    text = if (hasValidWinNum) {
-                                        "ပေါက်ငွေ ပမာဏ : ${fmt(totalWinningPayout)} (နှိပ်၍ 2D စာရင်းချုပ် ကြည့်ရန်)"
-                                    } else if (!hasRound) {
-                                        stringResource(R.string.add_round_first)
-                                    } else {
-                                        "ထွက်ဂဏန်း ထည့်သွင်းရန်"
-                                    },
-                                    color = if (hasValidWinNum) LuckySuccess else LuckyTextSecondary,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-
-                        OutlinedButton(
-                            onClick = { showWinEntryDialog = true },
-                            enabled = hasRound,
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = LuckyCard,
-                                contentColor = LuckyHeader
-                            ),
-                            modifier = Modifier.height(34.dp).testTag("edit_win_on_numbers_btn")
-                        ) {
-                            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(stringResource(R.string.label_winning_number), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    // Inline Winning Number input field & conditional Save button
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        AppOutlinedTextField(
-                            value = inlineWinInput,
-                            onValueChange = { input ->
-                                val filtered = input.filter { it.isDigit() }.take(2)
-                                inlineWinInput = filtered
-                                if (filtered.isEmpty() && currentWinNum.isNotEmpty()) {
-                                    viewModel.clearWinningNumberForCurrentSession()
-                                }
-                            },
-                            enabled = hasRound,
-                            label = { Text(stringResource(R.string.label_winning_number)) },
-                            trailingIcon = {
-                                if (inlineWinInput.isNotEmpty() || currentWinNum.isNotEmpty()) {
-                                    IconButton(
-                                        onClick = {
-                                            inlineWinInput = ""
-                                            viewModel.clearWinningNumberForCurrentSession()
-                                        },
-                                        modifier = Modifier.testTag("numbers_clear_winning_btn")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Clear,
-                                            contentDescription = stringResource(R.string.action_clear),
-                                            tint = LuckyTextSecondary
-                                        )
-                                    }
-                                }
-                            },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .soundOnInputFocus()
-                                .testTag("numbers_winning_input")
-                        )
-
-                        AnimatedVisibility(visible = showInlineSaveBtn) {
-                            CompactPrimaryButton(
-                                text = stringResource(R.string.action_save),
-                                onClick = {
-                                    if (inlineWinInput.trim().length == 2) {
-                                        viewModel.setWinningNumber(inlineWinInput.trim())
-                                    } else {
-                                        viewModel.showToast("ဂဏန်း ၂ လုံး အပြည့်ထည့်ပါ")
-                                    }
-                                },
-                                enabled = hasRound,
-                                modifier = Modifier.testTag("numbers_save_winning_btn")
-                            )
-                        }
-                    }
-
-                    // Compact "ထွက်ဂဏန်း ကြည့်ရန်" button right under the winning number input
-                    AnimatedVisibility(visible = hasValidWinNum) {
-                        CompactPrimaryButton(
-                            text = stringResource(R.string.action_view_winning_number),
-                            onClick = {
-                                viewModel.openNumbersFromWinningNumber()
-                            },
-                            horizontalPadding = 16.dp,
-                            cornerRadius = 10.dp,
-                            modifier = Modifier.testTag("numbers_view_winning_btn")
-                        )
-                    }
-                }
-            }
 
             // Date & Search Row
             Row(
@@ -335,7 +152,7 @@ fun NumbersScreen(
             )
         }
 
-        // Full-Width Screen-Fit Table (ဂဏန်းများ ဇယား)
+        // Full-Width 3-Column Table: [ အမှတ်စဉ် | ဂဏန်း | ပမာဏ ]
         Card(
             shape = RoundedCornerShape(10.dp),
             colors = CardDefaults.cardColors(containerColor = LuckyCard),
@@ -346,75 +163,69 @@ fun NumbersScreen(
                 .border(1.dp, LuckyBorder, RoundedCornerShape(10.dp))
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Table Header
+                // 3-Column Table Header: [ အမှတ်စဉ် | ဂဏန်း | ပမာဏ ]
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(LuckyHeader)
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .testTag("numbers_table_header"),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "စဉ်",
+                        text = stringResource(R.string.col_serial_no),
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         maxLines = 1,
                         softWrap = false,
-                        modifier = Modifier.weight(0.7f)
+                        modifier = Modifier.weight(1f)
                     )
                     Text(
-                        text = "ဂဏန်း",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        maxLines = 1,
-                        softWrap = false,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(1.1f)
-                    )
-                    Text(
-                        text = "အကြိမ်ရေ",
+                        text = stringResource(R.string.label_number),
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         maxLines = 1,
                         softWrap = false,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(1.1f)
+                        modifier = Modifier.weight(1f)
                     )
                     Text(
-                        text = "ပမာဏ",
+                        text = stringResource(R.string.label_amount),
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         maxLines = 1,
                         softWrap = false,
                         textAlign = TextAlign.End,
-                        modifier = Modifier.weight(1.5f)
+                        modifier = Modifier.weight(1.4f)
                     )
                 }
 
-                // Flow A Step 4-6: Highlighted Winning Number Row at the very top of the numbers table
+                // Prominent Red Highlight Row at the top of the table when Winning Number is active/set
                 if (hasValidWinNum) {
                     val winRowInteractionSource = remember { MutableInteractionSource() }
                     val isWinRowPressed by winRowInteractionSource.collectIsPressedAsState()
                     val winRowContentDesc = stringResource(R.string.winning_row_content_desc, formattedWinNum)
-                    val winEntryCount = winningSummaryItem?.entryCount ?: 0
-                    val winNetAmount = winningSummaryItem?.netAmount ?: viewModel.getWinningNumberBetAmountForCurrentSession(formattedWinNum)
+                    // Combined total amount of (လက်ခံကွက် + တင်ကွက်) for this winning number
+                    val winTotalBetAmount = winningSummaryItem?.totalBet
+                        ?: viewModel.getWinningNumberBetAmountForCurrentSession(formattedWinNum)
 
-                    val containerColor = if (isWinRowPressed) {
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f)
+                    val winBgColor = if (isWinRowPressed) {
+                        Color(0xFFFECACA)
                     } else {
-                        MaterialTheme.colorScheme.primaryContainer
+                        Color(0xFFFEE2E2)
                     }
-                    val onContainerColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    val winBorderColor = Color(0xFFEF4444)
+                    val winTextColor = Color(0xFFDC2626)
 
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .defaultMinSize(minHeight = 52.dp)
-                            .background(containerColor)
+                            .background(winBgColor)
+                            .border(width = 1.5.dp, color = winBorderColor)
                             .clickable(
                                 interactionSource = winRowInteractionSource,
                                 indication = LocalIndication.current,
@@ -431,67 +242,56 @@ fun NumbersScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = stringResource(R.string.label_winning_number),
-                            color = onContainerColor.copy(alpha = 0.85f),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            text = stringResource(R.string.winning_summary_label),
+                            color = winTextColor,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             softWrap = false,
                             modifier = Modifier
-                                .weight(0.9f)
+                                .weight(1f)
                                 .testTag("highlighted_winning_number_label")
                         )
 
                         Text(
                             text = formattedWinNum,
-                            color = onContainerColor,
+                            color = winTextColor,
                             fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 22.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 20.sp,
                             textAlign = TextAlign.Center,
                             maxLines = 1,
                             softWrap = false,
                             modifier = Modifier
-                                .weight(0.9f)
+                                .weight(1f)
                                 .testTag("highlighted_winning_number_value")
                         )
 
-                        Text(
-                            text = "$winEntryCount ကြိမ်",
-                            color = onContainerColor.copy(alpha = 0.85f),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            softWrap = false,
-                            modifier = Modifier.weight(1.1f)
-                        )
-
                         Row(
-                            modifier = Modifier.weight(1.5f),
+                            modifier = Modifier.weight(1.4f),
                             horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = fmt(winNetAmount),
-                                color = onContainerColor,
+                                text = fmt(winTotalBetAmount),
+                                color = winTextColor,
                                 fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.ExtraBold,
                                 fontSize = 16.sp,
                                 maxLines = 1,
                                 softWrap = false,
-                                textAlign = TextAlign.End
+                                textAlign = TextAlign.End,
+                                modifier = Modifier.testTag("highlighted_winning_number_amount")
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                 contentDescription = null,
-                                tint = onContainerColor,
+                                tint = winTextColor,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
                     }
-                    HorizontalDivider(color = onContainerColor.copy(alpha = 0.25f), thickness = 1.dp)
                 }
 
                 if (filteredSummaries.isEmpty()) {
@@ -514,87 +314,71 @@ fun NumbersScreen(
                             .weight(1f)
                     ) {
                         itemsIndexed(filteredSummaries, key = { _, item -> item.n }) { index, item ->
-                            val isWinningRow = currentWinNum.isNotEmpty() && item.n == currentWinNum
+                            val isWinningRow = hasValidWinNum && item.n == formattedWinNum
+                            val rowBgColor = when {
+                                isWinningRow -> Color(0xFFFEE2E2)
+                                index % 2 == 0 -> LuckyCard
+                                else -> LuckyCardDark
+                            }
+                            val rowTextColor = if (isWinningRow) Color(0xFFDC2626) else LuckyTextPrimary
+                            val numTextColor = if (isWinningRow) Color(0xFFDC2626) else LuckyHeader
+
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(
-                                        when {
-                                            isWinningRow -> Color(0xFFE8F5E9)
-                                            index % 2 == 0 -> LuckyCard
-                                            else -> LuckyCardDark
+                                    .background(rowBgColor)
+                                    .then(
+                                        if (isWinningRow) {
+                                            Modifier.border(1.dp, Color(0xFFEF4444))
+                                        } else {
+                                            Modifier
                                         }
                                     )
                                     .clickable {
                                         selectedNumberForBreakdown = item.n
                                     }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                                    .testTag("numbers_row_${item.n}"),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     text = "${index + 1}.",
-                                    color = LuckyTextSecondary,
+                                    color = if (isWinningRow) Color(0xFFDC2626) else LuckyTextSecondary,
+                                    fontWeight = if (isWinningRow) FontWeight.Bold else FontWeight.Normal,
                                     fontSize = 13.sp,
                                     maxLines = 1,
                                     softWrap = false,
-                                    modifier = Modifier.weight(0.7f)
+                                    modifier = Modifier.weight(1f)
                                 )
 
-                                Row(
-                                    modifier = Modifier.weight(1.1f),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = item.n,
-                                        color = if (isWinningRow) LuckySuccess else LuckyHeader,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                }
-
                                 Text(
-                                    text = "${item.entryCount} ကြိမ်",
-                                    color = LuckyTextSecondary,
-                                    fontSize = 13.sp,
+                                    text = item.n,
+                                    color = numTextColor,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp,
                                     maxLines = 1,
                                     softWrap = false,
                                     textAlign = TextAlign.Center,
-                                    modifier = Modifier.weight(1.1f)
+                                    modifier = Modifier.weight(1f)
                                 )
 
-                                Column(
-                                    modifier = Modifier.weight(1.5f),
-                                    horizontalAlignment = Alignment.End
-                                ) {
-                                    Text(
-                                        text = fmt(item.netAmount),
-                                        color = if (isWinningRow) LuckySuccess else LuckyTextPrimary,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        textAlign = TextAlign.End
-                                    )
-                                    if (item.layoffAmount > 0) {
-                                        Text(
-                                            text = "တင်: -${fmt(item.layoffAmount)}",
-                                            color = LuckyDanger,
-                                            fontSize = 10.sp,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                    }
-                                }
+                                Text(
+                                    text = fmt(item.totalBet),
+                                    color = rowTextColor,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    textAlign = TextAlign.End,
+                                    modifier = Modifier.weight(1.4f)
+                                )
                             }
                             HorizontalDivider(color = LuckyBorder.copy(alpha = 0.6f), thickness = 0.5.dp)
                         }
                     }
                 }
 
-                // Table Footer: စုစုပေါင်း
+                // Table Footer: စုစုပေါင်း (3-Column Aligned, No Frequency Count)
                 HorizontalDivider(color = LuckyBorder, thickness = 1.dp)
                 Row(
                     modifier = Modifier
@@ -608,15 +392,7 @@ fun NumbersScreen(
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
-                        modifier = Modifier.weight(1.8f)
-                    )
-                    Text(
-                        text = "$totalEntriesCount ကြိမ်",
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(1.1f)
+                        modifier = Modifier.weight(2f)
                     )
                     Text(
                         text = fmt(grandTotal),
@@ -624,79 +400,14 @@ fun NumbersScreen(
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 16.sp,
                         textAlign = TextAlign.End,
-                        modifier = Modifier.weight(1.5f)
+                        modifier = Modifier.weight(1.4f)
                     )
                 }
             }
         }
     }
 
-    // Winning Number Entry Dialog
-    if (showWinEntryDialog) {
-        var winInput by rememberSaveable(currentWinNum) { mutableStateOf(currentWinNum) }
-        val showDialogSave = hasRound && MainViewModel.shouldShowSaveButton(winInput, currentWinNum)
-        AlertDialog(
-            onDismissRequest = { showWinEntryDialog = false },
-            containerColor = LuckyCard,
-            shape = RoundedCornerShape(14.dp),
-            title = {
-                Text(
-                    text = "ထွက်ဂဏန်း သတ်မှတ်မည်",
-                    color = LuckyTextPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RoundRequiredHelperBanner(visible = !hasRound)
-                    Text(
-                        text = "နေ့စွဲ : $selectedDate (${if (hasRound) selectedSession else noRoundsText})",
-                        color = LuckyTextSecondary,
-                        fontSize = 13.sp
-                    )
-                    AppOutlinedTextField(
-                        value = winInput,
-                        onValueChange = {
-                            val filtered = it.filter { c -> c.isDigit() }
-                            if (filtered.length <= 2) winInput = filtered
-                        },
-                        enabled = hasRound,
-                        label = { Text(stringResource(R.string.label_winning_number)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .soundOnInputFocus()
-                    )
-                }
-            },
-            confirmButton = {
-                AnimatedVisibility(visible = showDialogSave) {
-                    Button(
-                        onClick = {
-                            if (winInput.length == 2) {
-                                viewModel.setWinningNumber(winInput)
-                                showWinEntryDialog = false
-                                selectedNumberForBreakdown = winInput
-                            }
-                        },
-                        enabled = hasRound,
-                        colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White)
-                    ) {
-                        Text(stringResource(R.string.action_save), fontWeight = FontWeight.Bold)
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showWinEntryDialog = false }) {
-                    Text(stringResource(R.string.action_cancel), color = LuckyTextSecondary)
-                }
-            }
-        )
-    }
-
-    // Requirement 3: Agent Detail Modal/View for Tapped Number or Winning Number
+    // Agent Detail Modal/View for Tapped Number or Winning Number
     selectedNumberForBreakdown?.let { targetNum ->
         val breakdownList = remember(targetNum, vouchers, agents, sessions, selectedDate, selectedSession) {
             viewModel.getNumberAgentBreakdown(targetNum)

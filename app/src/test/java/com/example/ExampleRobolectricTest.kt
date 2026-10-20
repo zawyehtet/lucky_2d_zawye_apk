@@ -582,6 +582,27 @@ class ExampleRobolectricTest {
         assertEquals(Screen.SETTLEMENT, viewModel.currentScreen.value)
         assertTrue(viewModel.goBack())
         assertEquals(Screen.HOME, viewModel.currentScreen.value)
+
+        // Verify Bottom Nav ရက်ချုပ်, 3-column Numbers header အမှတ်စဉ်, and Home footer branding strings
+        assertEquals("ရက်ချုပ်", context.getString(R.string.nav_daily_summary))
+        assertEquals("အမှတ်စဉ်", context.getString(R.string.col_serial_no))
+        assertEquals("Power by Lcky2d3d ShweKhinMyay", context.getString(R.string.home_footer_branding))
+
+        // Verify winning number volume on Numbers (လက်ခံကွက် + တင်ကွက်) and kept winning amount within brake limit on Brake
+        viewModel.addSession("မနက်ပိုင်း", 10.0, 80.0)
+        viewModel.addAgent("ကိုအောင်", 10.0, 80.0)
+        viewModel.setEntryAgent(viewModel.agents.value.first())
+        viewModel.addEntryItems(listOf(BetItem("47", 12000L), BetItem("15", 4000L)))
+        assertTrue(viewModel.commitCurrentVoucher())
+
+        viewModel.updateBrakeLimit("5000")
+        viewModel.executeLayoff(isAll = true) // lays off 7000 on "47", leaving netAmount = 5000
+        viewModel.setWinningNumber("47")
+
+        // Full aggregated volume (လက်ခံကွက် + တင်ကွက်) on Numbers screen is 12000
+        assertEquals(12000L, viewModel.getWinningNumberBetAmountForCurrentSession("47"))
+        // Kept amount within configured brake limit (5000) on Brake screen is 5000
+        assertEquals(5000L, viewModel.getKeptWinningAmountForBrake("47"))
     }
 }
 

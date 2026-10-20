@@ -890,14 +890,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }?.n ?: ""
     }
 
-    // Reuses the existing getAggregatedNumbers() calculation to get the total amount bet on the winning number
+    // Reuses the existing getAggregatedNumbers() calculation to get the combined total amount (လက်ခံကွက် + တင်ကွက်) bet on the winning number
     fun getWinningNumberBetAmountForCurrentSession(winNumOverride: String? = null): Long {
         val rawWin = winNumOverride?.trim() ?: getWinningNumberForCurrentSession()
         if (rawWin.isEmpty()) return 0L
         val parsed = rawWin.toIntOrNull()
         val normalizedWin = if (parsed != null && parsed in 0..99) "%02d".format(Locale.US, parsed) else rawWin
         val summary = getAggregatedNumbers().firstOrNull { it.n == normalizedWin }
-        return summary?.netAmount ?: 0L
+        return summary?.totalBet ?: 0L
+    }
+
+    /**
+     * Returns the amount kept within the configured brake limit (မိမိလက်ခံသော/ဘရိတ်အတွင်း ပေါက်သီးပမာဏ)
+     * for the active winning number on the တင်ကွက်များ (Brake) screen.
+     */
+    fun getKeptWinningAmountForBrake(winNumOverride: String? = null, brakeLimitOverride: Long? = null): Long {
+        val rawWin = winNumOverride?.trim() ?: getWinningNumberForCurrentSession()
+        if (rawWin.isEmpty()) return 0L
+        val parsed = rawWin.toIntOrNull()
+        val normalizedWin = if (parsed != null && parsed in 0..99) "%02d".format(Locale.US, parsed) else rawWin
+        val summary = getAggregatedNumbers().firstOrNull { it.n == normalizedWin } ?: return 0L
+        val activeBrakeLimit = brakeLimitOverride ?: if (_currentBrakeInput.value.isNotBlank()) {
+            parseAmountOrZero(_currentBrakeInput.value)
+        } else {
+            _settings.value.brakeLimit
+        }
+        return if (activeBrakeLimit > 0L) {
+            minOf(summary.netAmount, activeBrakeLimit)
+        } else {
+            summary.netAmount
+        }
     }
 
     fun getFormattedWinningHeaderForCurrentSession(

@@ -152,32 +152,41 @@ fun HomeScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(36.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-            // Round Selector & Settings Bar
+            // Round Selector & Settings Bar (properly aligned, never clipping the Settings Gear icon)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .widthIn(max = 420.dp)
                     .padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box {
+                Box(
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
                     val currentRoundDisplay = if (sessions.isEmpty() || selectedSession.isEmpty()) {
                         noRoundsText
                     } else {
                         selectedSession
                     }
-                    Text(
-                        text = "$selectRoundPrompt - $currentRoundDisplay",
-                        color = LuckyTextPrimary,
-                        fontSize = 19.sp,
-                        fontWeight = FontWeight.Medium,
+                    Row(
                         modifier = Modifier
                             .clickable { showSessionMenu = true }
                             .padding(vertical = 8.dp, horizontal = 8.dp)
-                            .testTag("home_round_selector")
-                    )
+                            .testTag("home_round_selector"),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "$selectRoundPrompt - $currentRoundDisplay",
+                            color = LuckyTextPrimary,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
 
                     DropdownMenu(
                         expanded = showSessionMenu,
@@ -216,22 +225,37 @@ fun HomeScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
                 IconButton(
                     onClick = { viewModel.navigateTo(Screen.SETTINGS) },
                     modifier = Modifier
-                        .size(48.dp)
+                        .requiredSize(48.dp)
                         .testTag("home_settings_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Settings,
                         contentDescription = "ဆက်တင်",
                         tint = LuckyTextPrimary,
-                        modifier = Modifier.size(38.dp)
+                        modifier = Modifier.size(34.dp)
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Footer Branding Credit
+            Text(
+                text = stringResource(R.string.home_footer_branding),
+                color = Color(0xFF64748B),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, bottom = 12.dp)
+                    .testTag("home_footer_branding")
+            )
         }
     }
 }

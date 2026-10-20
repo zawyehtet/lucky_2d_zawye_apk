@@ -68,8 +68,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val showBottomBar = currentScreen != Screen.HOME &&
-                    currentScreen != Screen.NUMBER_ENTRY &&
-                    currentScreen != Screen.SETTLEMENT
+                    currentScreen != Screen.NUMBER_ENTRY
 
                 Scaffold(
                     modifier = Modifier
@@ -142,12 +141,12 @@ fun LuckyBottomNav(
             verticalAlignment = Alignment.CenterVertically
         ) {
             BottomNavItem(
-                label = "ပင်မ",
-                icon = Icons.Default.Home,
-                isSelected = currentScreen == Screen.HOME,
-                testTag = "nav_home",
+                label = "ရက်ချုပ်",
+                icon = Icons.Default.Assignment,
+                isSelected = currentScreen == Screen.SETTLEMENT,
+                testTag = "nav_settlement",
                 modifier = Modifier.weight(1f),
-                onClick = { onSelectScreen(Screen.HOME) }
+                onClick = { onSelectScreen(Screen.SETTLEMENT) }
             )
 
             BottomNavItem(
@@ -180,7 +179,7 @@ fun LuckyBottomNav(
             BottomNavItem(
                 label = "တင်ကွက်",
                 icon = Icons.Default.AddCircleOutline,
-                isSelected = currentScreen == Screen.BRAKE || currentScreen == Screen.LAYOFF_HISTORY || currentScreen == Screen.SETTLEMENT,
+                isSelected = currentScreen == Screen.BRAKE || currentScreen == Screen.LAYOFF_HISTORY,
                 testTag = "nav_brake",
                 modifier = Modifier.weight(1f),
                 onClick = { onSelectScreen(Screen.BRAKE) }

@@ -46,9 +46,22 @@ fun BrakeScreen(
 
     val vouchers by viewModel.vouchers.collectAsState()
     val layoffs by viewModel.layoffs.collectAsState()
+    val wins by viewModel.wins.collectAsState()
 
     val hasRound = sessions.isNotEmpty() && selectedSession.isNotBlank() && sessions.any { it.name == selectedSession }
     val noRoundsText = stringResource(R.string.no_rounds_yet)
+
+    val currentWinNum = remember(wins, selectedDate, selectedSession, hasRound) {
+        if (hasRound) {
+            wins.firstOrNull { it.date == selectedDate && it.session == selectedSession }?.n ?: ""
+        } else ""
+    }
+    val hasValidWinNum = remember(currentWinNum, hasRound) {
+        hasRound && currentWinNum.length == 2 && currentWinNum.all { it.isDigit() }
+    }
+    val formattedWinNum = remember(currentWinNum) {
+        com.example.ui.components.formatWinningNumberTwoDigits(currentWinNum)
+    }
 
     var showConfirmDialog by rememberSaveable { mutableStateOf(false) }
     var lastSavedBrakeText by rememberSaveable(settings.brakeLimit) {
@@ -60,6 +73,20 @@ fun BrakeScreen(
     val limit = MainViewModel.parseAmountOrZero(currentBrakeInput)
     val summaries = remember(vouchers, layoffs, selectedDate, selectedSession) {
         viewModel.getAggregatedNumbers()
+    }
+
+    // Amount kept within the configured brake limit (မိမိလက်ခံသော/ဘရိတ်အတွင်း ပေါက်သီးပမာဏ)
+    val keptWinningAmount = remember(summaries, formattedWinNum, hasValidWinNum, limit, currentBrakeInput, settings.brakeLimit) {
+        if (hasValidWinNum) {
+            val winSummary = summaries.firstOrNull { it.n == formattedWinNum }
+            val activeBrake = if (currentBrakeInput.isNotBlank()) limit else settings.brakeLimit
+            if (winSummary != null) {
+                if (activeBrake > 0L) minOf(winSummary.netAmount, activeBrake) else winSummary.netAmount
+            } else 0L
+        } else 0L
+    }
+    val winningEntryCount = remember(summaries, formattedWinNum, hasValidWinNum) {
+        if (hasValidWinNum) summaries.firstOrNull { it.n == formattedWinNum }?.entryCount ?: 0 else 0
     }
 
     val leftRetainedList = summaries.map { summary ->
@@ -230,13 +257,86 @@ fun BrakeScreen(
                             .fillMaxWidth()
                             .weight(1f)
                     ) {
-                        // Left List: Retained
+                        // Left List: Retained (လက်ခံကွက်)
+                        val regularLeftRetainedList = remember(leftRetainedList, formattedWinNum, hasValidWinNum) {
+                            if (hasValidWinNum) {
+                                leftRetainedList.filter { it.first != formattedWinNum }
+                            } else {
+                                leftRetainedList
+                            }
+                        }
+
                         LazyColumn(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
                         ) {
-                            if (leftRetainedList.isEmpty()) {
+                            // Top Winning Number Row in "လက်ခံကွက်" (Kept Bets) Column
+                            if (hasValidWinNum) {
+                                item(key = "kept_winning_number_top_row") {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color(0xFFFEE2E2))
+                                            .border(1.5.dp, Color(0xFFEF4444))
+                                            .padding(vertical = 8.dp, horizontal = 8.dp)
+                                            .testTag("brake_kept_winning_row"),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Text(
+                                                text = formattedWinNum,
+                                                color = Color(0xFFDC2626),
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 15.sp,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                modifier = Modifier.testTag("brake_kept_winning_number")
+                                            )
+                                            Surface(
+                                                color = Color(0xFFEF4444),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = stringResource(R.string.winning_summary_label),
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 9.sp,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    modifier = Modifier
+                                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                        .testTag("brake_kept_winning_badge")
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = "$winningEntryCount",
+                                            color = Color(0xFFDC2626),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                        Text(
+                                            text = fmt(keptWinningAmount),
+                                            color = Color(0xFFDC2626),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 13.sp,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            modifier = Modifier.testTag("brake_kept_winning_amount")
+                                        )
+                                    }
+                                    HorizontalDivider(color = Color(0xFFEF4444).copy(alpha = 0.4f), thickness = 1.dp)
+                                }
+                            }
+
+                            if (!hasValidWinNum && regularLeftRetainedList.isEmpty()) {
                                 item {
                                     Text(
                                         text = "မရှိပါ",
@@ -246,7 +346,7 @@ fun BrakeScreen(
                                     )
                                 }
                             } else {
-                                itemsIndexed(leftRetainedList) { idx, (num, cnt, amt) ->
+                                itemsIndexed(regularLeftRetainedList) { idx, (num, cnt, amt) ->
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
