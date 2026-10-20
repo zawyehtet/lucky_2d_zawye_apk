@@ -40,8 +40,10 @@ roomKtx = "2.7.0"
 roomRuntime = "2.7.0"
 runner = "1.6.2"
 secretsGradlePlugin = "2.0.1"
+securityCrypto = "1.1.0-alpha06"
 
 [libraries]
+androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-compose-material-icons-core = { group = "androidx.compose.material", name = "material-icons-core" }

@@ -261,5 +261,23 @@ class ExampleUnitTest {
         """.trimIndent()
         assertEquals(expectedText, formattedText)
     }
+
+    @Test
+    fun testOfflineLicenseManagerKeyGenerationAndVerification() {
+        assertEquals(
+            "LUCKY2D-OFFLINE-MASTER-SECRET-2026-KEY",
+            com.example.security.SecurityManager.getSharedSecret()
+        )
+
+        val sampleDeviceId = "8f4a2c91e0b37d12"
+        val key1 = com.example.security.LicenseManager.generateExpectedKey(sampleDeviceId)
+        val key2 = com.example.security.LicenseManager.generateExpectedKey("  8F4A2C91E0B37D12  ")
+        assertEquals(key1, key2)
+        assertTrue(Regex("^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$").matches(key1))
+
+        val sig1 = com.example.security.LicenseManager.computeActivationSignature(sampleDeviceId)
+        val sig2 = com.example.security.LicenseManager.computeActivationSignature("other_device_id")
+        assertFalse(com.example.security.SecurityManager.constantTimeEquals(sig1, sig2))
+    }
 }
 

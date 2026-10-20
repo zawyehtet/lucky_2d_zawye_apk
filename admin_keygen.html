@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lucky 2D - Admin Offline Key Generator</title>
+  <style>
+    :root {
+      --primary: #1B5E20;
+      --accent: #2E7D32;
+      --bg: #F4F7F5;
+      --card: #FFFFFF;
+      --border: #C8E6C9;
+      --text: #1C2826;
+      --muted: #607D8B;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px 16px;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .card {
+      width: 100%;
+      max-width: 440px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 20px;
+      color: var(--primary);
+      text-align: center;
+    }
+    p.sub {
+      margin: 0 0 20px;
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      font-size: 16px;
+      font-family: monospace;
+      text-transform: uppercase;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      outline: none;
+    }
+    input:focus {
+      border-color: var(--primary);
+    }
+    button.primary {
+      width: 100%;
+      margin-top: 14px;
+      padding: 13px;
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      background: var(--primary);
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    button.primary:hover {
+      background: var(--accent);
+    }
+    .key-box {
+      margin-top: 20px;
+      padding: 16px;
+      background: #E8F5E9;
+      border: 1.5px dashed var(--primary);
+      border-radius: 12px;
+      text-align: center;
+    }
+    .key-label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .key-value {
+      font-family: monospace;
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: var(--primary);
+      word-break: break-all;
+    }
+    button.secondary {
+      width: 100%;
+      margin-top: 10px;
+      padding: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--primary);
+      background: #E8F5E9;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .status {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--accent);
+      text-align: center;
+      min-height: 18px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Lucky 2D Key Generator</h1>
+    <p class="sub">100% Offline Admin Activation Key Tool (HMAC-SHA256)</p>
+
+    <label for="deviceId">Client Device ID ထည့်ပါ:</label>
+    <input
+      id="deviceId"
+      type="text"
+      placeholder="e.g. 8F4A2C91E0B37D12"
+      autocomplete="off"
+      oninput="this.value = this.value.toUpperCase()"
+    />
+
+    <button class="primary" onclick="generateActivationKey()">
+      Key ထုတ်မည် (Generate Key)
+    </button>
+
+    <div class="key-box">
+      <div class="key-label">Activation Key (XXXX-XXXX-XXXX)</div>
+      <div id="outputKey" class="key-value">---- ---- ----</div>
+    </div>
+
+    <button class="secondary" onclick="copyGeneratedKey()">
+      Key ကူးယူမည် (Copy Key)
+    </button>
+    <div id="statusMsg" class="status"></div>
+  </div>
+
+  <script>
+    const SHARED_SECRET = "LUCKY2D-OFFLINE-MASTER-SECRET-2026-KEY";
+
+    function normalizeDeviceId(raw) {
+      return (raw || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    }
+
+    async function generateActivationKey() {
+      const inputEl = document.getElementById("deviceId");
+      const statusEl = document.getElementById("statusMsg");
+      const outputEl = document.getElementById("outputKey");
+
+      const normalizedId = normalizeDeviceId(inputEl.value);
+      inputEl.value = normalizedId;
+
+      if (!normalizedId) {
+        statusEl.textContent = "ကျေးဇူးပြု၍ Device ID ထည့်သွင်းပါ။";
+        outputEl.textContent = "---- ---- ----";
+        return;
+      }
+
+      const encoder = new TextEncoder();
+      const cryptoKey = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(SHARED_SECRET),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"]
+      );
+
+      const signatureBuffer = await crypto.subtle.sign(
+        "HMAC",
+        cryptoKey,
+        encoder.encode(normalizedId)
+      );
+
+      const hexDigest = Array.from(new Uint8Array(signatureBuffer))
+        .map(b => b.toString(16).padStart(2, "0").toUpperCase())
+        .join("");
+
+      const raw12 = hexDigest.substring(0, 12);
+      const formattedKey = `${raw12.slice(0, 4)}-${raw12.slice(4, 8)}-${raw12.slice(8, 12)}`;
+      outputEl.textContent = formattedKey;
+      statusEl.textContent = "Activation Key ထုတ်ပြီးပါပြီ။";
+    }
+
+    async function copyGeneratedKey() {
+      const keyText = document.getElementById("outputKey").textContent;
+      const statusEl = document.getElementById("statusMsg");
+      if (!keyText || keyText.includes("----")) {
+        statusEl.textContent = "Key အရင်ထုတ်ပေးပါ။";
+        return;
+      }
+      await navigator.clipboard.writeText(keyText);
+      statusEl.textContent = `ကူးယူပြီးပါပြီ: ${keyText}`;
+    }
+  </script>
+</body>
+</html>

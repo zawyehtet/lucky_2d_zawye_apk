@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.security.LicenseManager
 import com.example.ui.MainViewModel
 import com.example.ui.Screen
 import com.example.ui.screens.*
@@ -48,60 +49,72 @@ class MainActivity : ComponentActivity() {
         setContent {
             MyApplicationTheme {
                 val context = LocalContext.current
-                val currentScreen by viewModel.currentScreen.collectAsState()
-                val editingSettledRecord by viewModel.editingSettledRecord.collectAsState()
-
-                LaunchedEffect(Unit) {
-                    viewModel.toastEvent.collectLatest { msg ->
-                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                    }
+                var isActivated by remember {
+                    mutableStateOf(LicenseManager.isAppActivated(context))
                 }
 
-                if (currentScreen != Screen.HOME && currentScreen != Screen.NUMBER_ENTRY) {
-                    BackHandler {
-                        viewModel.goBack()
-                    }
-                } else if (currentScreen == Screen.HOME && editingSettledRecord != null) {
-                    BackHandler {
-                        viewModel.cancelEditingSettledRecord()
-                    }
-                }
+                if (!isActivated) {
+                    ActivationScreen(
+                        onActivated = {
+                            isActivated = true
+                        }
+                    )
+                } else {
+                    val currentScreen by viewModel.currentScreen.collectAsState()
+                    val editingSettledRecord by viewModel.editingSettledRecord.collectAsState()
 
-                val showBottomBar = currentScreen != Screen.HOME &&
-                    currentScreen != Screen.NUMBER_ENTRY
-
-                Scaffold(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(LuckyBg),
-                    bottomBar = {
-                        if (showBottomBar) {
-                            LuckyBottomNav(
-                                currentScreen = currentScreen,
-                                onSelectScreen = { screen ->
-                                    viewModel.navigateTo(screen)
-                                }
-                            )
+                    LaunchedEffect(Unit) {
+                        viewModel.toastEvent.collectLatest { msg ->
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                         }
                     }
-                ) { innerPadding ->
-                    Box(
+
+                    if (currentScreen != Screen.HOME && currentScreen != Screen.NUMBER_ENTRY) {
+                        BackHandler {
+                            viewModel.goBack()
+                        }
+                    } else if (currentScreen == Screen.HOME && editingSettledRecord != null) {
+                        BackHandler {
+                            viewModel.cancelEditingSettledRecord()
+                        }
+                    }
+
+                    val showBottomBar = currentScreen != Screen.HOME &&
+                        currentScreen != Screen.NUMBER_ENTRY
+
+                    Scaffold(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(bottom = if (showBottomBar) innerPadding.calculateBottomPadding() else 0.dp)
-                    ) {
-                        Crossfade(targetState = currentScreen, label = "ScreenTransition") { screen ->
-                            when (screen) {
-                                Screen.HOME -> HomeScreen(viewModel = viewModel)
-                                Screen.AGENTS -> AgentsScreen(viewModel = viewModel)
-                                Screen.NUMBER_ENTRY -> NumberEntryScreen(viewModel = viewModel)
-                                Screen.VOUCHERS -> VouchersScreen(viewModel = viewModel)
-                                Screen.NUMBERS -> NumbersScreen(viewModel = viewModel)
-                                Screen.BRAKE -> BrakeScreen(viewModel = viewModel)
-                                Screen.SETTLEMENT -> SettlementScreen(viewModel = viewModel)
-                                Screen.SETTINGS -> SettingsScreen(viewModel = viewModel)
-                                Screen.LAYOFF_HISTORY -> LayoffHistoryScreen(viewModel = viewModel)
-                                Screen.AGENT_SETTLEMENT -> AgentSettlementScreen(viewModel = viewModel)
+                            .background(LuckyBg),
+                        bottomBar = {
+                            if (showBottomBar) {
+                                LuckyBottomNav(
+                                    currentScreen = currentScreen,
+                                    onSelectScreen = { screen ->
+                                        viewModel.navigateTo(screen)
+                                    }
+                                )
+                            }
+                        }
+                    ) { innerPadding ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(bottom = if (showBottomBar) innerPadding.calculateBottomPadding() else 0.dp)
+                        ) {
+                            Crossfade(targetState = currentScreen, label = "ScreenTransition") { screen ->
+                                when (screen) {
+                                    Screen.HOME -> HomeScreen(viewModel = viewModel)
+                                    Screen.AGENTS -> AgentsScreen(viewModel = viewModel)
+                                    Screen.NUMBER_ENTRY -> NumberEntryScreen(viewModel = viewModel)
+                                    Screen.VOUCHERS -> VouchersScreen(viewModel = viewModel)
+                                    Screen.NUMBERS -> NumbersScreen(viewModel = viewModel)
+                                    Screen.BRAKE -> BrakeScreen(viewModel = viewModel)
+                                    Screen.SETTLEMENT -> SettlementScreen(viewModel = viewModel)
+                                    Screen.SETTINGS -> SettingsScreen(viewModel = viewModel)
+                                    Screen.LAYOFF_HISTORY -> LayoffHistoryScreen(viewModel = viewModel)
+                                    Screen.AGENT_SETTLEMENT -> AgentSettlementScreen(viewModel = viewModel)
+                                }
                             }
                         }
                     }
