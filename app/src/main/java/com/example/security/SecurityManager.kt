@@ -12,35 +12,19 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * Cryptographic & Keystore helper for offline license validation.
- * Reconstructs the shared secret from an XOR-masked byte array at runtime
- * to resist plain-string extraction via `strings` or JADX.
+ * Cryptographic & Keystore helper for 100% offline license validation.
+ * Uses HMAC-SHA256 with the fixed shared secret "Lucky3D_Super_Secret_Key_2026!#".
  */
 object SecurityManager {
 
     private const val PREFS_FILE_NAME = "lucky2d_secure_license_prefs"
     private const val FALLBACK_PREFS_FILE_NAME = "lucky2d_fallback_license_prefs"
-    private const val XOR_MASK: Int = 0x5A
-
-    // XOR-masked bytes of "LUCKY2D-OFFLINE-MASTER-SECRET-2026-KEY" with 0x5A
-    private val OBFUSCATED_SECRET_BYTES = intArrayOf(
-        0x16, 0x0F, 0x19, 0x11, 0x03, 0x68, 0x1E, 0x77,
-        0x15, 0x1C, 0x1C, 0x16, 0x13, 0x14, 0x1F, 0x77,
-        0x17, 0x1B, 0x09, 0x0E, 0x1F, 0x08, 0x77, 0x09,
-        0x1F, 0x19, 0x08, 0x1F, 0x0E, 0x77, 0x68, 0x6A,
-        0x68, 0x6C, 0x77, 0x11, 0x1F, 0x03
-    )
+    const val SHARED_SECRET = "Lucky3D_Super_Secret_Key_2026!#"
 
     /**
-     * Reconstructs the shared secret at runtime.
-     * Matches Admin Key Generator secret: "LUCKY2D-OFFLINE-MASTER-SECRET-2026-KEY"
+     * Returns the fixed shared secret shared between the Android client and Admin HTML/JS generator.
      */
-    fun getSharedSecret(): String {
-        val chars = CharArray(OBFUSCATED_SECRET_BYTES.size) { index ->
-            (OBFUSCATED_SECRET_BYTES[index] xor XOR_MASK).toChar()
-        }
-        return String(chars)
-    }
+    fun getSharedSecret(): String = SHARED_SECRET
 
     /**
      * Computes uppercase hexadecimal HMAC-SHA256(payload, secret).
@@ -77,7 +61,6 @@ object SecurityManager {
         return try {
             createEncryptedPrefs(appContext)
         } catch (e: Exception) {
-            // Recover from Keystore invalidation after OS/lockscreen migration
             try {
                 appContext.deleteSharedPreferences(PREFS_FILE_NAME)
                 createEncryptedPrefs(appContext)

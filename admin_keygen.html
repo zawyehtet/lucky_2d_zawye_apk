@@ -3,210 +3,356 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lucky 2D - Admin Offline Key Generator</title>
+  <title>🍀 Offline Admin Key Generator</title>
   <style>
     :root {
-      --primary: #1B5E20;
-      --accent: #2E7D32;
-      --bg: #F4F7F5;
+      --emerald: #235347;
+      --emerald-dark: #163832;
+      --emerald-light: #8EB69B;
+      --emerald-tint: #DAF1DE;
+      --bg: #EFF5F2;
       --card: #FFFFFF;
-      --border: #C8E6C9;
-      --text: #1C2826;
-      --muted: #607D8B;
+      --text: #0B2B26;
+      --muted: #5C7670;
+      --danger: #D32F2F;
     }
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
     body {
       margin: 0;
-      padding: 24px 16px;
-      font-family: system-ui, -apple-system, sans-serif;
-      background: var(--bg);
+      padding: 20px 14px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(145deg, #163832 0%, #235347 100%);
       color: var(--text);
+      min-height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
-      min-height: 100vh;
     }
     .card {
       width: 100%;
       max-width: 440px;
       background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 24px;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
     }
-    h1 {
-      margin: 0 0 6px;
+    .card-header {
+      background: var(--emerald);
+      color: #FFFFFF;
+      padding: 22px 20px;
+      text-align: center;
+    }
+    .logo {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 10px;
+      background: rgba(255, 255, 255, 0.14);
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+    }
+    .card-header h1 {
+      margin: 0;
       font-size: 20px;
-      color: var(--primary);
-      text-align: center;
+      font-weight: 800;
+      letter-spacing: 0.4px;
     }
-    p.sub {
-      margin: 0 0 20px;
-      font-size: 13px;
-      color: var(--muted);
-      text-align: center;
+    .card-header p {
+      margin: 6px 0 0;
+      font-size: 12.5px;
+      opacity: 0.88;
     }
-    label {
-      display: block;
+    .card-body {
+      padding: 22px 20px 24px;
+    }
+    .field-group {
+      margin-bottom: 16px;
+    }
+    .field-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       font-size: 13px;
       font-weight: 700;
-      margin-bottom: 8px;
+      color: var(--text);
+      margin-bottom: 6px;
     }
-    input {
+    .input-row {
+      display: flex;
+      gap: 8px;
+    }
+    input[type="text"],
+    input[type="password"] {
+      flex: 1;
       width: 100%;
       padding: 12px 14px;
-      font-size: 16px;
-      font-family: monospace;
-      text-transform: uppercase;
-      border: 1.5px solid var(--border);
+      font-size: 15px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      border: 1.5px solid #C5D9D1;
       border-radius: 10px;
       outline: none;
+      color: var(--text);
+      background: #F9FCFA;
+      transition: border-color 0.2s;
     }
-    input:focus {
-      border-color: var(--primary);
+    input[type="text"]:focus,
+    input[type="password"]:focus {
+      border-color: var(--emerald);
+      background: #FFFFFF;
     }
-    button.primary {
-      width: 100%;
-      margin-top: 14px;
-      padding: 13px;
-      font-size: 15px;
+    .btn-inline {
+      padding: 0 14px;
+      font-size: 13px;
       font-weight: 700;
-      color: #fff;
-      background: var(--primary);
-      border: none;
+      color: var(--emerald);
+      background: var(--emerald-tint);
+      border: 1px solid var(--emerald-light);
       border-radius: 10px;
       cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
     }
-    button.primary:hover {
-      background: var(--accent);
+    .btn-inline:hover {
+      background: #C5E8CC;
     }
-    .key-box {
+    .btn-generate {
+      width: 100%;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: 800;
+      color: #FFFFFF;
+      background: var(--emerald);
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(35, 83, 71, 0.28);
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn-generate:hover {
+      background: var(--emerald-dark);
+    }
+    .btn-generate:active {
+      transform: scale(0.99);
+    }
+    .output-card {
       margin-top: 20px;
       padding: 16px;
-      background: #E8F5E9;
-      border: 1.5px dashed var(--primary);
+      background: var(--emerald-tint);
+      border: 1.5px dashed var(--emerald);
       border-radius: 12px;
       text-align: center;
     }
-    .key-label {
+    .output-title {
       font-size: 12px;
-      color: var(--muted);
-      margin-bottom: 6px;
+      font-weight: 700;
+      color: var(--emerald-dark);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 8px;
     }
-    .key-value {
-      font-family: monospace;
-      font-size: 22px;
+    .output-key {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 23px;
       font-weight: 800;
       letter-spacing: 2px;
-      color: var(--primary);
+      color: var(--emerald);
       word-break: break-all;
+      user-select: all;
     }
-    button.secondary {
+    .btn-copy {
       width: 100%;
-      margin-top: 10px;
-      padding: 10px;
-      font-size: 13px;
+      margin-top: 12px;
+      padding: 11px;
+      font-size: 14px;
       font-weight: 700;
-      color: var(--primary);
-      background: #E8F5E9;
-      border: 1px solid var(--border);
-      border-radius: 8px;
+      color: var(--emerald);
+      background: #FFFFFF;
+      border: 1.5px solid var(--emerald);
+      border-radius: 10px;
       cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-copy:hover {
+      background: #F1F9F3;
     }
     .status {
-      margin-top: 8px;
-      font-size: 12px;
-      color: var(--accent);
+      margin-top: 10px;
       text-align: center;
+      font-size: 12.5px;
+      font-weight: 600;
       min-height: 18px;
+      color: var(--emerald);
+    }
+    .status.error {
+      color: var(--danger);
     }
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>Lucky 2D Key Generator</h1>
-    <p class="sub">100% Offline Admin Activation Key Tool (HMAC-SHA256)</p>
-
-    <label for="deviceId">Client Device ID ထည့်ပါ:</label>
-    <input
-      id="deviceId"
-      type="text"
-      placeholder="e.g. 8F4A2C91E0B37D12"
-      autocomplete="off"
-      oninput="this.value = this.value.toUpperCase()"
-    />
-
-    <button class="primary" onclick="generateActivationKey()">
-      Key ထုတ်မည် (Generate Key)
-    </button>
-
-    <div class="key-box">
-      <div class="key-label">Activation Key (XXXX-XXXX-XXXX)</div>
-      <div id="outputKey" class="key-value">---- ---- ----</div>
+    <div class="card-header">
+      <div class="logo">🍀</div>
+      <h1>Admin Key Generator</h1>
+      <p>100% Offline HMAC-SHA256 Activation Tool</p>
     </div>
 
-    <button class="secondary" onclick="copyGeneratedKey()">
-      Key ကူးယူမည် (Copy Key)
-    </button>
-    <div id="statusMsg" class="status"></div>
+    <div class="card-body">
+      <!-- 1. Client Device ID -->
+      <div class="field-group">
+        <div class="field-label">
+          <span>Client Device ID</span>
+        </div>
+        <div class="input-row">
+          <input
+            id="deviceIdInput"
+            type="text"
+            placeholder="e.g. 8F4A2C91E0B37D12"
+            autocomplete="off"
+            oninput="this.value = this.value.toUpperCase()"
+          />
+          <button type="button" class="btn-inline" onclick="pasteDeviceId()">
+            Paste
+          </button>
+        </div>
+      </div>
+
+      <!-- 2. Secret Key -->
+      <div class="field-group">
+        <div class="field-label">
+          <span>Shared Secret Key</span>
+        </div>
+        <div class="input-row">
+          <input
+            id="secretKeyInput"
+            type="password"
+            value="Lucky3D_Super_Secret_Key_2026!#"
+            autocomplete="off"
+          />
+          <button type="button" class="btn-inline" id="toggleSecretBtn" onclick="toggleSecretVisibility()">
+            Show
+          </button>
+        </div>
+      </div>
+
+      <!-- Generate Button -->
+      <button type="button" class="btn-generate" onclick="generateLicenseKey()">
+        🔑 Generate Activation Key (Key ထုတ်မည်)
+      </button>
+
+      <!-- Output Card -->
+      <div class="output-card">
+        <div class="output-title">Activation Key (XXXX-XXXX-XXXX)</div>
+        <div id="licenseOutput" class="output-key">XXXX-XXXX-XXXX</div>
+        <button type="button" class="btn-copy" onclick="copyLicenseKey()">
+          📋 Copy Activation Key (Key ကူးယူမည်)
+        </button>
+      </div>
+
+      <div id="statusMessage" class="status"></div>
+    </div>
   </div>
 
   <script>
-    const SHARED_SECRET = "LUCKY2D-OFFLINE-MASTER-SECRET-2026-KEY";
-
     function normalizeDeviceId(raw) {
       return (raw || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
     }
 
-    async function generateActivationKey() {
-      const inputEl = document.getElementById("deviceId");
-      const statusEl = document.getElementById("statusMsg");
-      const outputEl = document.getElementById("outputKey");
+    function setStatus(message, isError = false) {
+      const el = document.getElementById("statusMessage");
+      el.textContent = message;
+      el.className = isError ? "status error" : "status";
+    }
 
-      const normalizedId = normalizeDeviceId(inputEl.value);
-      inputEl.value = normalizedId;
+    async function pasteDeviceId() {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          document.getElementById("deviceIdInput").value = normalizeDeviceId(text);
+          setStatus("Device ID pasted from clipboard.");
+          generateLicenseKey();
+        } else {
+          setStatus("Clipboard is empty.", true);
+        }
+      } catch (err) {
+        setStatus("Please paste manually (Ctrl+V / Long-press).", true);
+      }
+    }
 
-      if (!normalizedId) {
-        statusEl.textContent = "ကျေးဇူးပြု၍ Device ID ထည့်သွင်းပါ။";
-        outputEl.textContent = "---- ---- ----";
+    function toggleSecretVisibility() {
+      const secretInput = document.getElementById("secretKeyInput");
+      const btn = document.getElementById("toggleSecretBtn");
+      if (secretInput.type === "password") {
+        secretInput.type = "text";
+        btn.textContent = "Hide";
+      } else {
+        secretInput.type = "password";
+        btn.textContent = "Show";
+      }
+    }
+
+    async function generateLicenseKey() {
+      const deviceInputEl = document.getElementById("deviceIdInput");
+      const secretInputEl = document.getElementById("secretKeyInput");
+      const outputEl = document.getElementById("licenseOutput");
+
+      const deviceId = normalizeDeviceId(deviceInputEl.value);
+      deviceInputEl.value = deviceId;
+      const secret = secretInputEl.value;
+
+      if (!deviceId) {
+        outputEl.textContent = "XXXX-XXXX-XXXX";
+        setStatus("Please enter a valid Client Device ID.", true);
+        return;
+      }
+
+      if (!secret) {
+        outputEl.textContent = "XXXX-XXXX-XXXX";
+        setStatus("Shared Secret Key cannot be empty.", true);
         return;
       }
 
       const encoder = new TextEncoder();
       const cryptoKey = await crypto.subtle.importKey(
         "raw",
-        encoder.encode(SHARED_SECRET),
+        encoder.encode(secret),
         { name: "HMAC", hash: "SHA-256" },
         false,
         ["sign"]
       );
 
-      const signatureBuffer = await crypto.subtle.sign(
+      const signature = await crypto.subtle.sign(
         "HMAC",
         cryptoKey,
-        encoder.encode(normalizedId)
+        encoder.encode(deviceId)
       );
 
-      const hexDigest = Array.from(new Uint8Array(signatureBuffer))
+      const hexDigest = Array.from(new Uint8Array(signature))
         .map(b => b.toString(16).padStart(2, "0").toUpperCase())
         .join("");
 
       const raw12 = hexDigest.substring(0, 12);
-      const formattedKey = `${raw12.slice(0, 4)}-${raw12.slice(4, 8)}-${raw12.slice(8, 12)}`;
-      outputEl.textContent = formattedKey;
-      statusEl.textContent = "Activation Key ထုတ်ပြီးပါပြီ။";
+      const formatted = `${raw12.slice(0, 4)}-${raw12.slice(4, 8)}-${raw12.slice(8, 12)}`;
+      outputEl.textContent = formatted;
+      setStatus("Activation Key generated successfully!");
     }
 
-    async function copyGeneratedKey() {
-      const keyText = document.getElementById("outputKey").textContent;
-      const statusEl = document.getElementById("statusMsg");
-      if (!keyText || keyText.includes("----")) {
-        statusEl.textContent = "Key အရင်ထုတ်ပေးပါ။";
+    async function copyLicenseKey() {
+      const key = document.getElementById("licenseOutput").textContent;
+      if (!key || key === "XXXX-XXXX-XXXX") {
+        setStatus("Please generate an Activation Key first.", true);
         return;
       }
-      await navigator.clipboard.writeText(keyText);
-      statusEl.textContent = `ကူးယူပြီးပါပြီ: ${keyText}`;
+      try {
+        await navigator.clipboard.writeText(key);
+        setStatus(`Copied to clipboard: ${key}`);
+      } catch (err) {
+        setStatus("Failed to copy automatically. Select and copy manually.", true);
+      }
     }
   </script>
 </body>

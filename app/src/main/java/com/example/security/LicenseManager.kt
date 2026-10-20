@@ -9,12 +9,11 @@ import java.util.UUID
 /**
  * Singleton manager for One-Time Offline Android License & Activation.
  *
- * Workflow:
- * 1. [getDeviceId]: Fetches normalized Settings.Secure.ANDROID_ID.
- * 2. [generateExpectedKey]: Derives 12-char key `XXXX-XXXX-XXXX` via HMAC-SHA256(Device_ID, SHARED_SECRET).
- * 3. [verifyAndSaveLicense]: Validates user key in constant time and persists tamper-proof activation signature.
- * 4. [isAppActivated]: Verifies both `isActivated == true` and `HMAC-SHA256(Device_ID + "_ACTIVATED", SHARED_SECRET)`
- *    on every app launch so cloned preferences from another device are rejected.
+ * Cryptographic Specification:
+ * - Algorithm: HMAC-SHA256
+ * - Fixed Shared Secret: "Lucky3D_Super_Secret_Key_2026!#"
+ * - Key Format: 12-character uppercase hex formatted as `XXXX-XXXX-XXXX`
+ * - Security: Constant-time comparison (`MessageDigest.isEqual`) & `EncryptedSharedPreferences`.
  */
 object LicenseManager {
 
@@ -24,10 +23,6 @@ object LicenseManager {
     private const val KEY_ACTIVATED_PRODUCT_KEY = "activated_product_key"
     private const val KEY_FALLBACK_DEVICE_UUID = "fallback_device_uuid"
 
-    /**
-     * Controls whether Robolectric JVM tests enforce the activation gate by default.
-     * Dedicated license tests set this to `true` to test unactivated -> activated flows.
-     */
     @Volatile
     var enforceActivationInTests: Boolean = false
 
@@ -48,7 +43,6 @@ object LicenseManager {
             ?.filter { it.isLetterOrDigit() }
             .orEmpty()
 
-        // 9774D56D682E549C is a known buggy ANDROID_ID on very old Android 2.2 emulators
         if (cleaned.length >= 6 && cleaned != "9774D56D682E549C") {
             return cleaned
         }
@@ -70,11 +64,14 @@ object LicenseManager {
 
     /**
      * Derives the expected 12-character formatted product key (`XXXX-XXXX-XXXX`)
-     * from `HMAC-SHA256(Device_ID, SHARED_SECRET)`.
+     * from the first 12 hex characters of `HMAC-SHA256(Device_ID, SHARED_SECRET)`.
      */
-    fun generateExpectedKey(deviceId: String): String {
+    fun generateExpectedKey(
+        deviceId: String,
+        secret: String = SecurityManager.SHARED_SECRET
+    ): String {
         val normalizedDeviceId = normalizeDeviceId(deviceId)
-        val fullHmacHex = SecurityManager.computeHmacSha256Hex(normalizedDeviceId)
+        val fullHmacHex = SecurityManager.computeHmacSha256Hex(normalizedDeviceId, secret)
         val raw12 = fullHmacHex.take(12)
         return formatKeyWithDashes(raw12)
     }
@@ -99,17 +96,25 @@ object LicenseManager {
             return false
         }
 
-        val expectedFormatted = generateExpectedKey(currentDeviceId)
-        val normalizedExpected = normalizeKeyInput(expectedFormatted)
+        val expectedFormattedUpper = generateExpectedKey(currentDeviceId.uppercase(Locale.US))
+        val normalizedExpectedUpper = normalizeKeyInput(expectedFormattedUpper)
 
-        val isValid = SecurityManager.constantTimeEquals(normalizedInput, normalizedExpected)
+        // Also support case where admin generator hashed lowercase Device ID
+        val expectedFormattedLower = formatKeyWithDashes(
+            SecurityManager.computeHmacSha256Hex(currentDeviceId.lowercase(Locale.US)).take(12)
+        )
+        val normalizedExpectedLower = normalizeKeyInput(expectedFormattedLower)
+
+        val isValid = SecurityManager.constantTimeEquals(normalizedInput, normalizedExpectedUpper) ||
+            SecurityManager.constantTimeEquals(normalizedInput, normalizedExpectedLower)
+
         if (isValid) {
             val signature = computeActivationSignature(currentDeviceId)
             SecurityManager.getEncryptedPrefs(context).edit()
                 .putBoolean(KEY_IS_ACTIVATED, true)
                 .putString(KEY_ACTIVATED_DEVICE_ID, currentDeviceId)
                 .putString(KEY_ACTIVATION_SIGNATURE, signature)
-                .putString(KEY_ACTIVATED_PRODUCT_KEY, expectedFormatted)
+                .putString(KEY_ACTIVATED_PRODUCT_KEY, expectedFormattedUpper)
                 .apply()
         }
         return isValid
@@ -117,10 +122,6 @@ object LicenseManager {
 
     /**
      * Checks whether the current device is validly activated.
-     * Verifies:
-     * 1. `isActivated == true`
-     * 2. `activatedDeviceId == currentDeviceId`
-     * 3. `storedSignature == HMAC-SHA256(currentDeviceId + "_ACTIVATED", SHARED_SECRET)`
      */
     fun isAppActivated(context: Context): Boolean {
         if (SecurityManager.isRobolectricRuntime() && !enforceActivationInTests) {
@@ -147,9 +148,6 @@ object LicenseManager {
         return SecurityManager.constantTimeEquals(storedSignature, expectedSignature)
     }
 
-    /**
-     * Clears stored license state (used for testing or reset).
-     */
     fun clearLicenseForTesting(context: Context) {
         SecurityManager.getEncryptedPrefs(context).edit()
             .remove(KEY_IS_ACTIVATED)
@@ -159,9 +157,6 @@ object LicenseManager {
             .apply()
     }
 
-    /**
-     * Normalizes raw key input by stripping whitespace and hyphens and uppercasing.
-     */
     fun normalizeKeyInput(rawInput: String): String {
         return rawInput
             .trim()
@@ -172,9 +167,6 @@ object LicenseManager {
             .take(12)
     }
 
-    /**
-     * Formats up to 12 raw uppercase alphanumeric characters as `XXXX-XXXX-XXXX`.
-     */
     fun formatKeyWithDashes(rawAlphanumeric: String): String {
         val cleaned = normalizeKeyInput(rawAlphanumeric)
         return cleaned.chunked(4).joinToString("-")

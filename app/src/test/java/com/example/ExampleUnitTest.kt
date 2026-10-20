@@ -265,7 +265,7 @@ class ExampleUnitTest {
     @Test
     fun testOfflineLicenseManagerKeyGenerationAndVerification() {
         assertEquals(
-            "LUCKY2D-OFFLINE-MASTER-SECRET-2026-KEY",
+            "Lucky3D_Super_Secret_Key_2026!#",
             com.example.security.SecurityManager.getSharedSecret()
         )
 
