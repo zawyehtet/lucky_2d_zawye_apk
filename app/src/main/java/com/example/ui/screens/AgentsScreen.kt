@@ -319,8 +319,8 @@ fun AgentCard(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         StatCell(label = "စုပေါင်းထိုးကြေး", value = fmt(totalBet))
-                        StatCell(label = "ရောင်းကော်", value = fmt(commission))
-                        StatCell(label = "နုပ်ပြီးငွေ", value = fmt(netAmount), isHighlight = true)
+                        StatCell(label = "ကော်မရှင် (${agent.rate.toInt()}%)", value = fmt(commission))
+                        StatCell(label = "ကော်နုတ်ပြီး", value = fmt(netAmount), isHighlight = true)
                     }
 
                     HorizontalDivider(color = LuckyBorder, thickness = 0.5.dp)
@@ -331,13 +331,13 @@ fun AgentCard(
                     ) {
                         StatCell(label = "ဘောင်ချာ", value = "$voucherCount စောင်")
                         StatCell(
-                            label = "ပေါက်သီးကြေး",
+                            label = "လျော်ကြေး (${agent.mult.toInt()} ဆ)",
                             value = fmt(payout),
                             valueColor = if (payout > 0) LuckyDanger else LuckyTextSecondary
                         )
                         val netResult = netAmount - payout
                         StatCell(
-                            label = if (netResult >= 0) "ရရန်" else "ပေးရန်",
+                            label = if (netResult >= 0) "အမြတ် (ရရန်)" else "အရှုံး (ပေးရန်)",
                             value = "${if (netResult >= 0) "+" else "-"}${fmt(kotlin.math.abs(netResult))}",
                             valueColor = if (netResult >= 0) LuckySuccess else LuckyDanger
                         )

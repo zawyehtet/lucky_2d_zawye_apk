@@ -84,6 +84,7 @@ fun NumberEntryScreen(
     var inputAmount by rememberSaveable { mutableStateOf("") }
     var isReverseOn by rememberSaveable { mutableStateOf(false) }
     var activeField by rememberSaveable { mutableStateOf("NUMBER") } // "NUMBER" or "AMOUNT"
+    var shouldOverwriteAmount by rememberSaveable { mutableStateOf(false) }
     var amountValidationError by rememberSaveable { mutableStateOf(false) }
 
     // Debounced validation (180ms) on typed bet amount
@@ -143,7 +144,12 @@ fun NumberEntryScreen(
             }
         } else {
             val digitsOnly = num.filter { it.isDigit() }
-            inputAmount += digitsOnly
+            if (shouldOverwriteAmount) {
+                inputAmount = digitsOnly
+                shouldOverwriteAmount = false
+            } else {
+                inputAmount += digitsOnly
+            }
         }
     }
 
@@ -220,6 +226,7 @@ fun NumberEntryScreen(
             inputPattern = ""
             isReverseOn = false
             activeField = "NUMBER"
+            shouldOverwriteAmount = false
         }
     }
 
@@ -542,6 +549,7 @@ fun NumberEntryScreen(
                         onClick = {
                             viewModel.onInputFocusOrTap()
                             activeField = "NUMBER"
+                            shouldOverwriteAmount = false
                         },
                         modifier = Modifier.weight(1f).testTag("preview_cell_number")
                     )
@@ -564,10 +572,12 @@ fun NumberEntryScreen(
                         title = "ပမာဏ",
                         value = inputAmount,
                         isActive = activeField == "AMOUNT",
+                        isValueSelected = activeField == "AMOUNT" && shouldOverwriteAmount && inputAmount.isNotEmpty(),
                         isError = amountValidationError,
                         onClick = {
                             viewModel.onInputFocusOrTap()
                             activeField = "AMOUNT"
+                            shouldOverwriteAmount = inputAmount.isNotEmpty()
                         },
                         modifier = Modifier.weight(1f).testTag("preview_cell_amount")
                     )
@@ -667,12 +677,18 @@ fun NumberEntryScreen(
                         modifier = Modifier.weight(1f),
                         onClick = {
                             viewModel.onInputFocusOrTap()
-                            activeField = if (activeField == "NUMBER") "AMOUNT" else "NUMBER"
+                            if (activeField == "NUMBER") {
+                                activeField = "AMOUNT"
+                                shouldOverwriteAmount = inputAmount.isNotEmpty()
+                            } else {
+                                activeField = "NUMBER"
+                                shouldOverwriteAmount = false
+                            }
                         }
                     )
                 }
 
-                // Row 3: အပါ | 7 | 8 | 9 | ရွှေ့
+                // Row 3: အပါ | 7 | 8 | 9 | ENTER
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -685,19 +701,27 @@ fun NumberEntryScreen(
                         onClick = {
                             inputPattern = if (inputPattern == "အပါ") "" else "အပါ"
                             activeField = "NUMBER"
+                            shouldOverwriteAmount = false
                         }
                     )
                     NumKey("7", Modifier.weight(1f)) { onKeypadNumPress("7") }
                     NumKey("8", Modifier.weight(1f)) { onKeypadNumPress("8") }
                     NumKey("9", Modifier.weight(1f)) { onKeypadNumPress("9") }
                     KeypadBtn(
-                        text = "ရွှေ့",
+                        text = stringResource(R.string.keypad_enter),
                         bgColor = LuckyHeader,
                         textColor = Color.White,
-                        modifier = Modifier.weight(1f),
+                        isBold = true,
+                        modifier = Modifier.weight(1f).testTag("keypad_enter_btn"),
                         onClick = {
                             viewModel.onInputFocusOrTap()
-                            activeField = if (activeField == "NUMBER") "AMOUNT" else "NUMBER"
+                            if (activeField == "NUMBER") {
+                                activeField = "AMOUNT"
+                                shouldOverwriteAmount = inputAmount.isNotEmpty()
+                            } else {
+                                activeField = "NUMBER"
+                                shouldOverwriteAmount = false
+                            }
                         }
                     )
                 }
@@ -716,6 +740,7 @@ fun NumberEntryScreen(
                             if (activeField == "NUMBER" && inputNumber.isNotEmpty()) {
                                 inputNumber = inputNumber.dropLast(1)
                             } else if (activeField == "AMOUNT" && inputAmount.isNotEmpty()) {
+                                shouldOverwriteAmount = false
                                 inputAmount = inputAmount.dropLast(1)
                             } else {
                                 viewModel.removeLastEntryItem()
@@ -865,6 +890,7 @@ fun PreviewCell(
     title: String,
     value: String,
     isActive: Boolean,
+    isValueSelected: Boolean = false,
     isError: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -905,7 +931,14 @@ fun PreviewCell(
                 fontSize = 16.sp,
                 maxLines = 1,
                 softWrap = false,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                modifier = if (isValueSelected) {
+                    Modifier
+                        .background(Color(0xFFBBDEFB), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 6.dp, vertical = 1.dp)
+                } else {
+                    Modifier
+                }
             )
         }
     }

@@ -196,11 +196,11 @@ object PatternAlgorithms {
     )
 
     /**
-     * Strips comment lines (such as `( a=အပါ, ... )` or divider lines `---------`) before tokenizing.
+     * Strips comment lines (such as `( a=အပါ, ... )` or divider lines `---------`) and inline parenthetical guide notes before tokenizing.
      */
     private fun stripCommentAndGuideLines(text: String): String {
         return text.lines()
-            .map { it.trim() }
+            .map { line -> line.replace(Regex("\\([^)]*\\)"), "").trim() }
             .filter { line ->
                 line.isNotEmpty() &&
                     !line.startsWith("(") &&
@@ -409,6 +409,28 @@ object PatternAlgorithms {
                     continue
                 }
 
+                // Digits (2..9) + k (ခွေ) + amount: e.g. 123k500
+                val matchKwayAmt = Regex("^(\\d{2,9})k(\\d+)$").find(token)
+                if (matchKwayAmt != null) {
+                    val digitsStr = matchKwayAmt.groupValues[1]
+                    val rawAmt = matchKwayAmt.groupValues[2]
+                    val amtVal = validateBetAmount(rawAmt)
+                    val amount = rawAmt.toLongOrNull() ?: 0L
+                    val nums = getKway(digitsStr, withDoubles = false)
+                    if (!amtVal.isValid || amount > effectiveLimit || nums.isEmpty()) {
+                        skipped++
+                        continue
+                    }
+                    for (n in nums) {
+                        if (blocked.contains(n)) {
+                            blockedList.add(n)
+                        } else {
+                            items.add(BetItem(n, amount))
+                        }
+                    }
+                    continue
+                }
+
                 // Letter + amount (or optional digit + letter + amount for p/n/s/x):
                 // e.g. p3500, p500, n7500, n500, s500, x200, or 3p500, 7n500
                 val matchLetterAmt = Regex("^(?:\\d)?([pnsx])(\\d+)$").find(token)
@@ -462,7 +484,7 @@ object PatternAlgorithms {
                 .replace(Regex("\\s*([=rR/])\\s*"), "$1")
         }
         val tokens = normalizedLines
-            .flatMap { it.split(Regex("[\\s;|]+|,(?=\\s|$|[0-9]{1,2}[.=rR]|[0-9][abtwABTW]|[pnsxPNSX][0-9])")) }
+            .flatMap { it.split(Regex("[\\s;|]+|,(?=\\s|$|[0-9]{1,2}[.=rR]|[0-9][abtwABTW]|[0-9]{2,9}[kK]|[pnsxPNSX][0-9])")) }
             .map { it.trim() }
             .filter { it.isNotEmpty() && !it.startsWith("(") && !it.endsWith(")") }
 
@@ -506,6 +528,12 @@ object PatternAlgorithms {
                 val m1 = Regex("^(\\d)([abtw])(.+)$").find(low)
                 if (m1 != null) {
                     val v = validateBetAmount(m1.groupValues[3])
+                    if (!v.isValid) return v
+                    continue
+                }
+                val mk = Regex("^(\\d{2,9})k(.+)$").find(low)
+                if (mk != null) {
+                    val v = validateBetAmount(mk.groupValues[2])
                     if (!v.isValid) return v
                     continue
                 }

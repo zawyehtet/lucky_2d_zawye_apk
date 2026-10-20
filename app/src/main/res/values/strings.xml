@@ -46,7 +46,9 @@
     <string name="quick_bet_mode_1_title">2D ဂဏန်းများ ( အမြန်ထိုး 1 )</string>
     <string name="quick_bet_mode_2_title">2D ဂဏန်းများ ( အမြန်ထိုး 2 )</string>
     <string name="quick_bet_mode_1_placeholder">ကြေးတူရင်\n---------\n01.78=500\n\nကြေးတူ R ရင်\n---------\n01.78R500\n\nကြေးမတူရင်\n---------\n01.78=500/100</string>
-    <string name="quick_bet_mode_2_placeholder">5a500\n6b600\n1t500\n1w500\np3500\nn7500\ns500\nx200\n56=2000/1000\n89r350\n79=500\n\n( a=အပါ, b=ဘရိတ်, t=ထိပ်, w=နောက်, p=ပါဝါ, n=နက္ခတ်, s=အပူး, x=ညီကို )</string>
+    <string name="quick_bet_mode_2_placeholder">5a500 (5 အပါ)\n6b600 (6 ဘရိတ်)\n1t500 (1 ထိပ်)\n1w500 (1 နောက်)\np3500 (ပါဝါ)\nn7500 (နက္ခတ်)\ns500 (အပူး)\nx200 (ညီကို)\n123k500 (ခွေ)\n56=2000/1000\n89r350\n79=500\n\n( a=အပါ, b=ဘရိတ်, t=ထိပ်, w=နောက်, p=ပါဝါ, n=နက္ခတ်, s=အပူး, x=ညီကို, k=ခွေ )</string>
+    <string name="quick_bet_mode_2_guide">a=အပါ, b=ဘရိတ်, t=ထိပ်, w=နောက်, p=ပါဝါ, n=နက္ခတ်, s=အပူး, x=ညီကို, k=ခွေ</string>
+    <string name="keypad_enter">ENTER</string>
     <string name="action_paste">PASTE</string>
     <string name="layoff_confirm_title">တင်ကွက်များ တင်ရန် သေချာပါသလား ?</string>
     <string name="layoff_confirm_message">ဘရိတ် (%1$s) ထက် ကျော်လွန်နေသော တင်ကွက်များကို စာရင်းသွင်းမည်။</string>

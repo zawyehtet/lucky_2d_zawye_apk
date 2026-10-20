@@ -208,26 +208,27 @@ class ExampleUnitTest {
         assertEquals(1, rDouble.items.count { it.n == "01" && it.a == 500L })
         assertEquals(1, rDouble.items.count { it.n == "10" && it.a == 100L })
 
-        // Fast Bet 2: multi-line with standard formats and comment line
+        // Fast Bet 2: multi-line with standard formats, k (ခွေ), and inline guide notes
         val fastBet2Input = """
-            5a500
-            6b600
-            1t500
-            1w500
-            p3500
-            n7500
-            s500
-            x200
+            5a500 (5 အပါ)
+            6b600 (6 ဘရိတ်)
+            1t500 (1 ထိပ်)
+            1w500 (1 နောက်)
+            p3500 (ပါဝါ 3500)
+            n7500 (နက္ခတ် 7500)
+            s500 (အပူး 500)
+            x200 (ညီအစ်ကို 200)
+            123k500 (123 ခွေ 500)
             56=2000/1000
             89r350
             79=500
 
-            ( a=အပါ, b=ဘရိတ်, t=ထိပ်, w=နောက်, p=ပါဝါ, n=နက္ခတ်, s=အပူး, x=ညီကို )
+            ( a=အပါ, b=ဘရိတ်, t=ထိပ်, w=နောက်, p=ပါဝါ, n=နက္ခတ်, s=အပူး, x=ညီကို, k=ခွေ )
         """.trimIndent()
         val rFast2 = PatternAlgorithms.parseQuickEntryMode2(fastBet2Input, blocked)
         assertEquals(0, rFast2.skippedCount)
-        // 19 + 10 + 10 + 10 + 10 + 10 + 10 + 20 + 2 (56,65) + 2 (89,98) + 1 (79) = 104 items
-        assertEquals(104, rFast2.items.size)
+        // 19 + 10 + 10 + 10 + 10 + 10 + 10 + 20 + 6 (123k500 -> 12,13,21,23,31,32) + 2 (56,65) + 2 (89,98) + 1 (79) = 110 items
+        assertEquals(110, rFast2.items.size)
 
         // Agent 2D Settlement clipboard text format verification
         val agent = com.example.data.Agent(id = 1, name = "Aa", rate = 15.0, mult = 80.0)
