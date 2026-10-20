@@ -195,9 +195,24 @@ object PatternAlgorithms {
         val blockedSkipped: List<String>
     )
 
-    // Quick Entry Mode 1:
+    /**
+     * Strips comment lines (such as `( a=အပါ, ... )` or divider lines `---------`) before tokenizing.
+     */
+    private fun stripCommentAndGuideLines(text: String): String {
+        return text.lines()
+            .map { it.trim() }
+            .filter { line ->
+                line.isNotEmpty() &&
+                    !line.startsWith("(") &&
+                    !line.endsWith(")") &&
+                    !line.all { c -> c == '-' || c == '=' || c.isWhitespace() }
+            }
+            .joinToString("\n")
+    }
+
+    // Quick Entry Mode 1 ("အမြန်ထိုး 1"):
     // Format: "01.78=500" or "01.78R500" or "01.78=500/100"
-    // Separators: space, comma, newline, pipe, semicolon
+    // Separators: multiple lines, space, comma, dot separation
     fun parseQuickEntryMode1(
         text: String,
         blocked: Set<String>,
@@ -208,12 +223,25 @@ object PatternAlgorithms {
         var skipped = 0
         val blockedList = mutableListOf<String>()
 
-        // Split text by whitespace, newlines, pipes, semicolons, or commas separating distinct entries (preserving invalid comma amounts like 78=500,00 so they fail validation)
-        val tokens = text.split(Regex("[\\s;|\n\r]+|,(?=\\s|$|[0-9]{1,2}[.=rR]|[0-9][abtwABTW]|[pnsxPNSX][0-9])")).filter { it.isNotBlank() }
+        val cleanedText = stripCommentAndGuideLines(text)
+        if (cleanedText.isBlank()) {
+            return ParseResult(items, skipped, blockedList)
+        }
+
+        // Split into entry tokens while supporting space/comma/dot separation of numbers before '=' or 'R'
+        // First normalize spaces/commas between 2-digit numbers on the same line before '=' or 'R' into dots (e.g. "01 78=500" or "01,78=500" -> "01.78=500")
+        val normalizedLines = cleanedText.lines().map { line ->
+            line.trim().replace(Regex("(\\b\\d{2})[\\s,]+(?=\\d{2}(?:[.\\s,]+\\d{2})*\\s*[=rR])"), "$1.")
+                .replace(Regex("\\s*([=rR/])\\s*"), "$1")
+        }
+        val tokens = normalizedLines
+            .flatMap { it.split(Regex("[\\s;|]+|,(?=\\s|$|[0-9]{1,2}[.=rR]|[0-9][abtwABTW]|[pnsxPNSX][0-9])")) }
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
 
         for (token in tokens) {
             try {
-                // Check format 1: numbers=amount/revAmount (e.g. 01.78=500/100 or 56=2000/1000)
+                // Pattern 3 (Different Amounts / Straight & Reverse): e.g. 01.78=500/100 or 56=2000/1000
                 if (token.contains("=") && token.contains("/")) {
                     val eqParts = token.split("=")
                     if (eqParts.size == 2) {
@@ -225,7 +253,7 @@ object PatternAlgorithms {
                         val amtDirect = directRaw?.trim()?.toLongOrNull() ?: 0L
                         val amtReverse = reverseRaw?.trim()?.toLongOrNull() ?: -1L
                         val reverseValid = amtReverse == 0L || (validateBetAmount(reverseRaw).isValid && amtReverse <= effectiveLimit)
-                        val numbers = numPart.split(".").filter { it.length == 2 && it.all { c -> c.isDigit() } }
+                        val numbers = numPart.split(Regex("[.,\\s]+")).filter { it.length == 2 && it.all { c -> c.isDigit() } }
                         if (numbers.isEmpty() || !directVal.isValid || amtDirect > effectiveLimit || !reverseValid) {
                             skipped++
                         } else {
@@ -236,7 +264,8 @@ object PatternAlgorithms {
                                     items.add(BetItem(n, amtDirect))
                                 }
                                 val rev = reverse2D(n)
-                                if (amtReverse > 0) {
+                                // If straight and reverse are identical (double like 11, 22), add only the straight amount without duplicating
+                                if (rev != n && amtReverse > 0L) {
                                     if (blocked.contains(rev)) {
                                         blockedList.add(rev)
                                     } else {
@@ -249,14 +278,14 @@ object PatternAlgorithms {
                     }
                 }
 
-                // Check format 2: numbersRamount (e.g. 01.78R500, 89r350)
+                // Pattern 2 (Same Amount with R / Reverse): e.g. 01.78R500 or 01.78r500 or 89r350
                 if (token.contains("r", ignoreCase = true)) {
                     val rIndex = token.indexOfFirst { it.equals('r', ignoreCase = true) }
                     val numPart = token.substring(0, rIndex)
                     val amtPart = token.substring(rIndex + 1)
                     val amtVal = validateBetAmount(amtPart)
                     val amount = amtPart.trim().toLongOrNull() ?: 0L
-                    val numbers = numPart.split(".").filter { it.length == 2 && it.all { c -> c.isDigit() } }
+                    val numbers = numPart.split(Regex("[.,\\s]+")).filter { it.length == 2 && it.all { c -> c.isDigit() } }
                     if (numbers.isEmpty() || !amtVal.isValid || amount > effectiveLimit) {
                         skipped++
                     } else {
@@ -275,14 +304,14 @@ object PatternAlgorithms {
                     continue
                 }
 
-                // Check format 3: numbers=amount (e.g. 01.78=500, 79=500)
+                // Pattern 1 (Same Amount): e.g. 01.78=500 or 79=500
                 if (token.contains("=")) {
                     val parts = token.split("=")
                     if (parts.size == 2) {
                         val numPart = parts[0]
                         val amtVal = validateBetAmount(parts[1])
                         val amount = parts[1].trim().toLongOrNull() ?: 0L
-                        val numbers = numPart.split(".").filter { it.length == 2 && it.all { c -> c.isDigit() } }
+                        val numbers = numPart.split(Regex("[.,\\s]+")).filter { it.length == 2 && it.all { c -> c.isDigit() } }
                         if (numbers.isEmpty() || !amtVal.isValid || amount > effectiveLimit) {
                             skipped++
                         } else {
@@ -307,9 +336,9 @@ object PatternAlgorithms {
         return ParseResult(items, skipped, blockedList)
     }
 
-    // Quick Entry Mode 2:
+    // Quick Entry Mode 2 ("အမြန်ထိုး 2"):
     // Formats:
-    // 5a500, 6b600, 1t500, 1w500, p3500, n7500, s500, x200, 56=2000/1000, 89r350, 79=500
+    // 5a500, 6b600, 1t500, 1w500, p3500 / p500, n7500 / n500, s500, x200, 56=2000/1000, 89r350, 79=500
     // (a=အပါ, b=ဘရိတ်, t=ထိပ်, w=နောက်, p=ပါဝါ, n=နက္ခတ်, s=အပူး, x=ညီကို)
     fun parseQuickEntryMode2(
         text: String,
@@ -321,13 +350,26 @@ object PatternAlgorithms {
         var skipped = 0
         val blockedList = mutableListOf<String>()
 
-        val tokens = text.split(Regex("[\\s;|\n\r]+|,(?=\\s|$|[0-9]{1,2}[.=rR]|[0-9][abtwABTW]|[pnsxPNSX][0-9])")).filter { it.isNotBlank() }
+        val cleanedText = stripCommentAndGuideLines(text)
+        if (cleanedText.isBlank()) {
+            return ParseResult(items, skipped, blockedList)
+        }
+
+        val normalizedLines = cleanedText.lines().map { line ->
+            line.trim().replace(Regex("(\\b\\d{2})[\\s,]+(?=\\d{2}(?:[.\\s,]+\\d{2})*\\s*[=rR])"), "$1.")
+                .replace(Regex("\\s*([=rR/])\\s*"), "$1")
+        }
+        val tokens = normalizedLines
+            .flatMap { it.split(Regex("[\\s;|]+|,(?=\\s|$|[0-9]{1,2}[.=rR]|[0-9][abtwABTW]|[pnsxPNSX][0-9])")) }
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
 
         for (rawToken in tokens) {
+            if (rawToken.startsWith("(") || rawToken.endsWith(")")) continue
             val token = rawToken.lowercase().trim()
             try {
-                // If contains '=' or 'r' with 2-digit number, delegate to mode 1 parser logic
-                if (token.contains("=") || (token.contains("r") && token.first().isDigit() && token.indexOf("r") == 2)) {
+                // Standard formats in Fast Bet 2: 56=2000/1000, 89r350, 79=500, 01.78r500
+                if (token.contains("=") || (token.contains("r") && token.first().isDigit())) {
                     val res = parseQuickEntryMode1(token, blocked, effectiveLimit)
                     items.addAll(res.items)
                     skipped += res.skippedCount
@@ -335,7 +377,7 @@ object PatternAlgorithms {
                     continue
                 }
 
-                // Digit + letter + amount: a, b, t, w
+                // Digit + letter + amount: a (အပါ), b (ဘရိတ်), t (ထိပ်), w (နောက်)
                 val matchDigitLetterAmt = Regex("^(\\d)([abtw])(\\d+)$").find(token)
                 if (matchDigitLetterAmt != null) {
                     val digitChar = matchDigitLetterAmt.groupValues[1][0]
@@ -367,8 +409,9 @@ object PatternAlgorithms {
                     continue
                 }
 
-                // Letter + amount: p, n, s, x
-                val matchLetterAmt = Regex("^([pnsx])(\\d+)$").find(token)
+                // Letter + amount (or optional digit + letter + amount for p/n/s/x):
+                // e.g. p3500, p500, n7500, n500, s500, x200, or 3p500, 7n500
+                val matchLetterAmt = Regex("^(?:\\d)?([pnsx])(\\d+)$").find(token)
                 if (matchLetterAmt != null) {
                     val letter = matchLetterAmt.groupValues[1]
                     val rawAmt = matchLetterAmt.groupValues[2]
@@ -398,7 +441,6 @@ object PatternAlgorithms {
                     continue
                 }
 
-                // Fallback direct 2D e.g. "45=500" or "45 500"
                 skipped++
             } catch (e: Exception) {
                 skipped++
@@ -412,10 +454,18 @@ object PatternAlgorithms {
      * Validates all bet amounts inside a Quick Entry text string using the shared [validateBetAmount] rule.
      */
     fun validateQuickEntryAmounts(text: String, mode: Int): BetAmountValidationResult {
-        val trimmed = text.trim()
-        if (trimmed.isEmpty()) return BetAmountValidationResult.Empty
+        val cleaned = stripCommentAndGuideLines(text)
+        if (cleaned.isEmpty()) return BetAmountValidationResult.Empty
 
-        val tokens = trimmed.split(Regex("[\\s;|\n\r]+|,(?=\\s|$|[0-9]{1,2}[.=rR]|[0-9][abtwABTW]|[pnsxPNSX][0-9])")).filter { it.isNotBlank() }
+        val normalizedLines = cleaned.lines().map { line ->
+            line.trim().replace(Regex("(\\b\\d{2})[\\s,]+(?=\\d{2}(?:[.\\s,]+\\d{2})*\\s*[=rR])"), "$1.")
+                .replace(Regex("\\s*([=rR/])\\s*"), "$1")
+        }
+        val tokens = normalizedLines
+            .flatMap { it.split(Regex("[\\s;|]+|,(?=\\s|$|[0-9]{1,2}[.=rR]|[0-9][abtwABTW]|[pnsxPNSX][0-9])")) }
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("(") && !it.endsWith(")") }
+
         if (tokens.isEmpty()) return BetAmountValidationResult.Empty
 
         for (rawToken in tokens) {
@@ -459,7 +509,7 @@ object PatternAlgorithms {
                     if (!v.isValid) return v
                     continue
                 }
-                val m2 = Regex("^([pnsx])(.+)$").find(low)
+                val m2 = Regex("^(?:\\d)?([pnsx])(.+)$").find(low)
                 if (m2 != null) {
                     val v = validateBetAmount(m2.groupValues[2])
                     if (!v.isValid) return v

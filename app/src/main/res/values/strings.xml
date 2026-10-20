@@ -41,11 +41,13 @@
     <string name="voucher_add_number">ဂဏန်းထည့်ရန်</string>
     <string name="action_place_bet">ထိုးရန်</string>
     <string name="action_quick_bet">အမြန်ထိုး</string>
-    <string name="quick_bet_mode_1">အမြန်ထိုး ၁</string>
-    <string name="quick_bet_mode_2">အမြန်ထိုး ၂</string>
-    <string name="quick_bet_mode_1_title">အမြန်ထိုး ၁ (စာကြောင်းအလိုက်)</string>
-    <string name="quick_bet_mode_2_title">အမြန်ထိုး ၂ (ပုံစံတို)</string>
-    <string name="action_paste">ကူးထည့်မည်</string>
+    <string name="quick_bet_mode_1">အမြန်ထိုး 1</string>
+    <string name="quick_bet_mode_2">အမြန်ထိုး 2</string>
+    <string name="quick_bet_mode_1_title">2D ဂဏန်းများ ( အမြန်ထိုး 1 )</string>
+    <string name="quick_bet_mode_2_title">2D ဂဏန်းများ ( အမြန်ထိုး 2 )</string>
+    <string name="quick_bet_mode_1_placeholder">ကြေးတူရင်\n---------\n01.78=500\n\nကြေးတူ R ရင်\n---------\n01.78R500\n\nကြေးမတူရင်\n---------\n01.78=500/100</string>
+    <string name="quick_bet_mode_2_placeholder">5a500\n6b600\n1t500\n1w500\np3500\nn7500\ns500\nx200\n56=2000/1000\n89r350\n79=500\n\n( a=အပါ, b=ဘရိတ်, t=ထိပ်, w=နောက်, p=ပါဝါ, n=နက္ခတ်, s=အပူး, x=ညီကို )</string>
+    <string name="action_paste">PASTE</string>
     <string name="layoff_confirm_title">တင်ကွက်များ တင်ရန် သေချာပါသလား ?</string>
     <string name="layoff_confirm_message">ဘရိတ် (%1$s) ထက် ကျော်လွန်နေသော တင်ကွက်များကို စာရင်းသွင်းမည်။</string>
     <string name="layoff_confirm_summary">တင်ရန် စုစုပေါင်း: %1$s (%2$d လုံး)</string>

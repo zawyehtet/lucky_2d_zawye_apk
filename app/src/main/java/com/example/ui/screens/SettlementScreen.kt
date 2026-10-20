@@ -712,6 +712,39 @@ private fun SettlementMetricRow(
     }
 }
 
+/**
+ * Formats an individual agent's 2D settlement summary for copy-to-clipboard / share using the plain layout:
+ *
+ * 2D စာရင်းချုပ်
+ * ရက်စွဲ : {Date} ({Session})
+ * အမည်= {AgentName}
+ * စုစုပေါင်း ရောင်းကြေး = {TotalSales}
+ * ကော်မရှင် ({CommissionRate}%) ={CommissionAmount}
+ * ကော်နုတ်ပြီး ={NetAfterCommission}
+ * ပေါက်သီး({WinningNumber})={WinningBetAmount}
+ * လျော်ကြေး ={PayoutAmount}
+ * စုစုပေါင်း= {NetProfitOrLoss}
+ */
+fun formatAgent2DSettlementClipboardText(
+    date: String,
+    session: String,
+    winningNumber: String,
+    item: Agent2DSettlementItem
+): String {
+    val winDisplay = winningNumber.ifEmpty { "-" }
+    return buildString {
+        append("2D စာရင်းချုပ်\n")
+        append("ရက်စွဲ : $date ($session)\n")
+        append("အမည်= ${item.agent.name}\n")
+        append("စုစုပေါင်း ရောင်းကြေး = ${fmt(item.totalBet)}\n")
+        append("ကော်မရှင် (${fmt(item.agent.rate)}%) =${fmt(item.commission)}\n")
+        append("ကော်နုတ်ပြီး =${fmt(item.netAmount)}\n")
+        append("ပေါက်သီး($winDisplay)=${fmt(item.winBetAmount)}\n")
+        append("လျော်ကြေး =${fmt(item.payout)}\n")
+        append("စုစုပေါင်း= ${fmt(item.profitLoss)}")
+    }
+}
+
 @Composable
 fun AgentSettlementScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
@@ -751,25 +784,12 @@ fun AgentSettlementScreen(viewModel: MainViewModel) {
     }
 
     fun formatAgentSettlementShare(item: Agent2DSettlementItem): String {
-        val isProfit = item.profitLoss >= 0
-        val sign = if (isProfit) "+" else "-"
-        val status = if (isProfit) "အမြတ်" else "အရှုံး"
-        return buildString {
-            append("================================\n")
-            append("   2D စာရင်းချုပ် (${item.agent.name})\n")
-            append("================================\n")
-            append("ရက်စွဲ : $selectedDate (${selectedSession.ifEmpty { noRoundsText }})\n")
-            append("ပေါက်သီး : ${currentWin.ifEmpty { "-" }}\n")
-            append("--------------------------------\n")
-            append("စုစုပေါင်း ရောင်းကြေး : ${fmt(item.totalBet)}\n")
-            append("ကော်မရှင် (${fmt(item.agent.rate)}%) : -${fmt(item.commission)}\n")
-            append("ကော်နုတ်ပြီး : ${fmt(item.netAmount)}\n")
-            append("ပေါက်သီး (${currentWin.ifEmpty { "-" }}) : ${fmt(item.winBetAmount)}\n")
-            append("လျော်ကြေး (အဆ ${fmt(item.agent.mult)}) : -${fmt(item.payout)}\n")
-            append("--------------------------------\n")
-            append("အသားတင် ($status) : $sign${fmt(abs(item.profitLoss))}\n")
-            append("================================\n")
-        }
+        return formatAgent2DSettlementClipboardText(
+            date = selectedDate,
+            session = selectedSession.ifEmpty { noRoundsText },
+            winningNumber = currentWin,
+            item = item
+        )
     }
 
     Column(

@@ -1148,9 +1148,20 @@ fun QuickEntryDialog(
     onAddItems: (List<BetItem>, Int, List<String>) -> Unit
 ) {
     val context = LocalContext.current
-    var inputText by rememberSaveable { mutableStateOf("") }
-    var debouncedAmountError by rememberSaveable { mutableStateOf(false) }
+    var inputText by rememberSaveable(mode) { mutableStateOf("") }
+    var debouncedAmountError by rememberSaveable(mode) { mutableStateOf(false) }
     val invalidAmountText = stringResource(R.string.error_invalid_bet_amount)
+
+    val titleText = if (mode == 1) {
+        stringResource(R.string.quick_bet_mode_1_title)
+    } else {
+        stringResource(R.string.quick_bet_mode_2_title)
+    }
+    val placeholderText = if (mode == 1) {
+        stringResource(R.string.quick_bet_mode_1_placeholder)
+    } else {
+        stringResource(R.string.quick_bet_mode_2_placeholder)
+    }
 
     LaunchedEffect(inputText, mode) {
         if (inputText.isBlank()) {
@@ -1162,54 +1173,167 @@ fun QuickEntryDialog(
         }
     }
 
-    val immediateValidation = remember(inputText, mode) {
-        if (inputText.isBlank()) BetAmountValidationResult.Empty
-        else PatternAlgorithms.validateQuickEntryAmounts(inputText, mode)
-    }
-    val isSubmitEnabled = inputText.isNotBlank() && !debouncedAmountError && immediateValidation.isValid
+    val lightBlueBorder = Color(0xFF29B6F6)
+    val cancelRedColor = Color(0xFFF44336)
+    val pasteGreenColor = Color(0xFF4CAF50)
+    val submitBlueColor = Color(0xFF2196F3)
 
-    AlertDialog(
+    androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(14.dp),
-        title = {
-            Text(
-                text = if (mode == 1) stringResource(R.string.quick_bet_mode_1_title) else stringResource(R.string.quick_bet_mode_2_title),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                lineHeight = 24.sp
-            )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .widthIn(max = 460.dp)
+                .testTag("quick_entry_dialog_card"),
+            shape = RoundedCornerShape(8.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color.White,
+                contentColor = Color.Black
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = titleText,
+                    color = Color.Black,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    lineHeight = 24.sp,
+                    modifier = Modifier.testTag("quick_entry_dialog_title")
+                )
+
+                OutlinedTextField(
+                    value = inputText,
+                    onValueChange = { inputText = it },
+                    placeholder = {
+                        Text(
+                            text = placeholderText,
+                            color = LuckyLabelDarkGrey.copy(alpha = 0.7f),
+                            fontSize = 14.sp,
+                            lineHeight = 21.sp
+                        )
+                    },
+                    isError = debouncedAmountError,
+                    singleLine = false,
+                    minLines = 8,
+                    maxLines = 14,
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        color = Color.Black,
+                        fontSize = 16.sp,
+                        lineHeight = 24.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    shape = RoundedCornerShape(6.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.Black,
+                        unfocusedTextColor = Color.Black,
+                        errorTextColor = Color.Black,
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White,
+                        errorContainerColor = Color.White,
+                        cursorColor = Color.Black,
+                        focusedBorderColor = if (debouncedAmountError) LuckyDanger else lightBlueBorder,
+                        unfocusedBorderColor = if (debouncedAmountError) LuckyDanger else lightBlueBorder,
+                        errorBorderColor = LuckyDanger
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 230.dp, max = 280.dp)
+                        .border(
+                            width = 1.5.dp,
+                            color = if (debouncedAmountError) LuckyDanger else lightBlueBorder,
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                        .soundOnInputFocus()
+                        .testTag("quick_entry_text_input")
+                )
+
+                if (debouncedAmountError) {
+                    Text(
+                        text = invalidAmountText,
+                        color = LuckyDanger,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.testTag("quick_entry_amount_error_text")
+                    )
+                }
+
+                // Bottom Action Buttons: 1. "မလုပ်တော့ပါ" (Red #F44336), 2. "PASTE" (Green #4CAF50), 3. "ထည့်မည်" (Blue #2196F3)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    AppOutlinedTextField(
-                        value = inputText,
-                        onValueChange = { inputText = it },
-                        label = { Text(stringResource(R.string.label_quick_entry_numbers)) },
-                        isError = debouncedAmountError,
-                        singleLine = false,
-                        minLines = 1,
-                        maxLines = 4,
-                        shape = RoundedCornerShape(10.dp),
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = cancelRedColor,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .soundOnInputFocus()
-                            .testTag("quick_entry_text_input")
-                    )
+                            .height(42.dp)
+                            .testTag("quick_entry_cancel_btn")
+                    ) {
+                        Text(
+                            text = stringResource(R.string.action_cancel),
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
 
-                    CompactFilledButton(
-                        text = stringResource(R.string.action_place_bet),
+                    Button(
                         onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = clipboard.primaryClip
+                            if (clip != null && clip.itemCount > 0) {
+                                val pasted = clip.getItemAt(0).text?.toString() ?: ""
+                                if (pasted.isNotBlank()) {
+                                    inputText = if (inputText.isBlank()) pasted else "$inputText\n$pasted"
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = pasteGreenColor,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp)
+                            .testTag("quick_entry_paste_btn")
+                    ) {
+                        Text(
+                            text = stringResource(R.string.action_paste),
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            if (inputText.isBlank()) return@Button
                             val check = PatternAlgorithms.validateQuickEntryAmounts(inputText, mode)
                             if (!check.isValid) {
                                 debouncedAmountError = true
-                                return@CompactFilledButton
+                                return@Button
                             }
                             val result = if (mode == 1) {
                                 PatternAlgorithms.parseQuickEntryMode1(inputText, blocked)
@@ -1218,56 +1342,30 @@ fun QuickEntryDialog(
                             }
                             onAddItems(result.items, result.skippedCount, result.blockedSkipped)
                         },
-                        enabled = isSubmitEnabled,
-                        containerColor = LuckyHeader,
-                        contentColor = Color.White,
-                        horizontalPadding = 20.dp,
-                        cornerRadius = 10.dp,
-                        modifier = Modifier.testTag("quick_entry_submit_btn")
-                    )
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = submitBlueColor,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp)
+                            .testTag("quick_entry_submit_btn")
+                    ) {
+                        Text(
+                            text = stringResource(R.string.action_add),
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-
-                if (debouncedAmountError) {
-                    Text(
-                        text = invalidAmountText,
-                        color = LuckyDanger,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.testTag("quick_entry_amount_error_text")
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                CompactTextButton(
-                    text = stringResource(R.string.action_cancel),
-                    onClick = onDismiss,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    horizontalPadding = 12.dp
-                )
-
-                CompactTextButton(
-                    text = stringResource(R.string.action_paste),
-                    onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = clipboard.primaryClip
-                        if (clip != null && clip.itemCount > 0) {
-                            val pasted = clip.getItemAt(0).text?.toString() ?: ""
-                            if (pasted.isNotBlank()) {
-                                inputText = if (inputText.isBlank()) pasted else "$inputText\n$pasted"
-                            }
-                        }
-                    },
-                    contentColor = LuckyHeader,
-                    horizontalPadding = 12.dp
-                )
             }
         }
-    )
+    }
 }
 
 @Composable

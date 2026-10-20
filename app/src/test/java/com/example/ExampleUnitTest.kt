@@ -196,4 +196,69 @@ class ExampleUnitTest {
         assertEquals(com.example.data.BetAmountValidationResult.TooLarge, com.example.data.validateBetAmount("1000000000"))
         assertEquals(com.example.data.BetAmountValidationResult.TooLarge, com.example.data.validateBetAmount("99999999999999999999"))
     }
+
+    @Test
+    fun testFastBet1And2MultiLineAndClipboardFormat() {
+        val blocked = setOf<String>()
+
+        // Fast Bet 1: straight/reverse on double number 11 does not duplicate
+        val rDouble = PatternAlgorithms.parseQuickEntryMode1("11.01=500/100", blocked)
+        assertEquals(3, rDouble.items.size)
+        assertEquals(1, rDouble.items.count { it.n == "11" && it.a == 500L })
+        assertEquals(1, rDouble.items.count { it.n == "01" && it.a == 500L })
+        assertEquals(1, rDouble.items.count { it.n == "10" && it.a == 100L })
+
+        // Fast Bet 2: multi-line with standard formats and comment line
+        val fastBet2Input = """
+            5a500
+            6b600
+            1t500
+            1w500
+            p3500
+            n7500
+            s500
+            x200
+            56=2000/1000
+            89r350
+            79=500
+
+            ( a=အပါ, b=ဘရိတ်, t=ထိပ်, w=နောက်, p=ပါဝါ, n=နက္ခတ်, s=အပူး, x=ညီကို )
+        """.trimIndent()
+        val rFast2 = PatternAlgorithms.parseQuickEntryMode2(fastBet2Input, blocked)
+        assertEquals(0, rFast2.skippedCount)
+        // 19 + 10 + 10 + 10 + 10 + 10 + 10 + 20 + 2 (56,65) + 2 (89,98) + 1 (79) = 104 items
+        assertEquals(104, rFast2.items.size)
+
+        // Agent 2D Settlement clipboard text format verification
+        val agent = com.example.data.Agent(id = 1, name = "Aa", rate = 15.0, mult = 80.0)
+        val settlementItem = com.example.ui.Agent2DSettlementItem(
+            agent = agent,
+            voucherCount = 1,
+            totalBet = 119600L,
+            commission = 17940L,
+            netAmount = 101660L,
+            winBetAmount = 0L,
+            payout = 0L,
+            profitLoss = 101660L
+        )
+        val formattedText = com.example.ui.screens.formatAgent2DSettlementClipboardText(
+            date = "2026-10-21",
+            session = "21.AM",
+            winningNumber = "16",
+            item = settlementItem
+        )
+        val expectedText = """
+            2D စာရင်းချုပ်
+            ရက်စွဲ : 2026-10-21 (21.AM)
+            အမည်= Aa
+            စုစုပေါင်း ရောင်းကြေး = 119600
+            ကော်မရှင် (15%) =17940
+            ကော်နုတ်ပြီး =101660
+            ပေါက်သီး(16)=0
+            လျော်ကြေး =0
+            စုစုပေါင်း= 101660
+        """.trimIndent()
+        assertEquals(expectedText, formattedText)
+    }
 }
+
