@@ -147,11 +147,7 @@ fun NumbersScreen(
                         shape = RoundedCornerShape(10.dp)
                     )
                     .clickable(enabled = hasRound) {
-                        if (hasValidWinNum) {
-                            viewModel.open2DSummaryFromWinningNumber(formattedWinNum, selectedSession)
-                        } else {
-                            showWinEntryDialog = true
-                        }
+                        showWinEntryDialog = true
                     }
                     .testTag("winning_highlight_card")
             ) {

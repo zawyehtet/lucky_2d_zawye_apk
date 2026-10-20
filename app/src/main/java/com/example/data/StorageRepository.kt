@@ -518,6 +518,8 @@ class StorageRepository(context: Context) {
         return updated
     }
 
+    fun deleteById(recordId: Long): List<SettledRecord>? = deleteSettledRecordById(recordId)
+
     /**
      * Updates ONLY the single daily settled record matching [recordId], keeping the exact same id
      * and leaving all other records unchanged.
@@ -531,6 +533,9 @@ class StorageRepository(context: Context) {
         saveSettled(updated)
         return updated
     }
+
+    fun updateById(recordId: Long, updatedRecord: SettledRecord): List<SettledRecord>? =
+        updateSettledRecordById(recordId, updatedRecord)
 
     // App Settings
     fun loadSettings(): AppSettings {

@@ -559,4 +559,29 @@ class ExampleRobolectricTest {
         assertFalse(MainViewModel.shouldShowRoundSaveButton(liveRoundInput))
         assertEquals("ညနေပိုင်း", viewModel.sessions.value.single().name)
     }
+
+    @Test
+    fun `standardized summary titles 3-column daily ledger strings and launchSingleTop backstack work end to end`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val viewModel = MainViewModel(app)
+        viewModel.resetAllData()
+
+        // Standardized screen titles and 3-column Daily Ledger strings
+        assertEquals("ဂဏန်းများ", context.getString(R.string.numbers_screen_title))
+        assertEquals("2D စာရင်းချုပ်", context.getString(R.string.winning_summary_title_2d))
+        assertEquals("စာရင်းချုပ်", context.getString(R.string.daily_ledger_title))
+        assertEquals("ရက်စွဲ", context.getString(R.string.col_date))
+        assertEquals("အကြိမ်", context.getString(R.string.col_round))
+        assertEquals("အရှုံး/မြတ်", context.getString(R.string.col_loss_profit))
+        assertEquals("အရှုံးမြတ် စုစုပေါင်း", context.getString(R.string.daily_ledger_total_label))
+
+        // Rapid navigation with launchSingleTop does not push duplicate backstack entries
+        viewModel.navigateTo(Screen.SETTLEMENT)
+        viewModel.navigateTo(Screen.SETTLEMENT)
+        assertEquals(Screen.SETTLEMENT, viewModel.currentScreen.value)
+        assertTrue(viewModel.goBack())
+        assertEquals(Screen.HOME, viewModel.currentScreen.value)
+    }
 }
+
