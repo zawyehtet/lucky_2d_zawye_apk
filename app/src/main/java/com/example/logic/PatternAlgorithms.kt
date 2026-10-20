@@ -1,6 +1,9 @@
 package com.example.logic
 
+import com.example.data.BetAmountValidationResult
 import com.example.data.BetItem
+import com.example.data.MAX_BET_AMOUNT
+import com.example.data.validateBetAmount
 
 object PatternAlgorithms {
 
@@ -198,8 +201,9 @@ object PatternAlgorithms {
     fun parseQuickEntryMode1(
         text: String,
         blocked: Set<String>,
-        maxBet: Long
+        maxBet: Long = MAX_BET_AMOUNT
     ): ParseResult {
+        val effectiveLimit = minOf(maxBet, MAX_BET_AMOUNT)
         val items = mutableListOf<BetItem>()
         var skipped = 0
         val blockedList = mutableListOf<String>()
@@ -215,10 +219,14 @@ object PatternAlgorithms {
                     if (eqParts.size == 2) {
                         val numPart = eqParts[0]
                         val amtParts = eqParts[1].split("/")
-                        val amtDirect = amtParts.getOrNull(0)?.toLongOrNull() ?: 0L
-                        val amtReverse = amtParts.getOrNull(1)?.toLongOrNull() ?: 0L
+                        val directRaw = amtParts.getOrNull(0)
+                        val reverseRaw = amtParts.getOrNull(1)
+                        val directVal = validateBetAmount(directRaw)
+                        val amtDirect = directRaw?.trim()?.toLongOrNull() ?: 0L
+                        val amtReverse = reverseRaw?.trim()?.toLongOrNull() ?: -1L
+                        val reverseValid = amtReverse == 0L || (validateBetAmount(reverseRaw).isValid && amtReverse <= effectiveLimit)
                         val numbers = numPart.split(".").filter { it.length == 2 && it.all { c -> c.isDigit() } }
-                        if (numbers.isEmpty() || amtDirect <= 0 || amtDirect > maxBet || amtReverse < 0 || amtReverse > maxBet) {
+                        if (numbers.isEmpty() || !directVal.isValid || amtDirect > effectiveLimit || !reverseValid) {
                             skipped++
                         } else {
                             for (n in numbers) {
@@ -246,9 +254,10 @@ object PatternAlgorithms {
                     val rIndex = token.indexOfFirst { it.equals('r', ignoreCase = true) }
                     val numPart = token.substring(0, rIndex)
                     val amtPart = token.substring(rIndex + 1)
-                    val amount = amtPart.toLongOrNull() ?: 0L
+                    val amtVal = validateBetAmount(amtPart)
+                    val amount = amtPart.trim().toLongOrNull() ?: 0L
                     val numbers = numPart.split(".").filter { it.length == 2 && it.all { c -> c.isDigit() } }
-                    if (numbers.isEmpty() || amount <= 0 || amount > maxBet) {
+                    if (numbers.isEmpty() || !amtVal.isValid || amount > effectiveLimit) {
                         skipped++
                     } else {
                         for (n in numbers) {
@@ -271,9 +280,10 @@ object PatternAlgorithms {
                     val parts = token.split("=")
                     if (parts.size == 2) {
                         val numPart = parts[0]
-                        val amount = parts[1].toLongOrNull() ?: 0L
+                        val amtVal = validateBetAmount(parts[1])
+                        val amount = parts[1].trim().toLongOrNull() ?: 0L
                         val numbers = numPart.split(".").filter { it.length == 2 && it.all { c -> c.isDigit() } }
-                        if (numbers.isEmpty() || amount <= 0 || amount > maxBet) {
+                        if (numbers.isEmpty() || !amtVal.isValid || amount > effectiveLimit) {
                             skipped++
                         } else {
                             for (n in numbers) {
@@ -304,8 +314,9 @@ object PatternAlgorithms {
     fun parseQuickEntryMode2(
         text: String,
         blocked: Set<String>,
-        maxBet: Long
+        maxBet: Long = MAX_BET_AMOUNT
     ): ParseResult {
+        val effectiveLimit = minOf(maxBet, MAX_BET_AMOUNT)
         val items = mutableListOf<BetItem>()
         var skipped = 0
         val blockedList = mutableListOf<String>()
@@ -317,7 +328,7 @@ object PatternAlgorithms {
             try {
                 // If contains '=' or 'r' with 2-digit number, delegate to mode 1 parser logic
                 if (token.contains("=") || (token.contains("r") && token.first().isDigit() && token.indexOf("r") == 2)) {
-                    val res = parseQuickEntryMode1(token, blocked, maxBet)
+                    val res = parseQuickEntryMode1(token, blocked, effectiveLimit)
                     items.addAll(res.items)
                     skipped += res.skippedCount
                     blockedList.addAll(res.blockedSkipped)
@@ -329,9 +340,11 @@ object PatternAlgorithms {
                 if (matchDigitLetterAmt != null) {
                     val digitChar = matchDigitLetterAmt.groupValues[1][0]
                     val letter = matchDigitLetterAmt.groupValues[2]
-                    val amount = matchDigitLetterAmt.groupValues[3].toLongOrNull() ?: 0L
+                    val rawAmt = matchDigitLetterAmt.groupValues[3]
+                    val amtVal = validateBetAmount(rawAmt)
+                    val amount = rawAmt.toLongOrNull() ?: 0L
 
-                    if (amount <= 0 || amount > maxBet) {
+                    if (!amtVal.isValid || amount > effectiveLimit) {
                         skipped++
                         continue
                     }
@@ -358,9 +371,11 @@ object PatternAlgorithms {
                 val matchLetterAmt = Regex("^([pnsx])(\\d+)$").find(token)
                 if (matchLetterAmt != null) {
                     val letter = matchLetterAmt.groupValues[1]
-                    val amount = matchLetterAmt.groupValues[2].toLongOrNull() ?: 0L
+                    val rawAmt = matchLetterAmt.groupValues[2]
+                    val amtVal = validateBetAmount(rawAmt)
+                    val amount = rawAmt.toLongOrNull() ?: 0L
 
-                    if (amount <= 0 || amount > maxBet) {
+                    if (!amtVal.isValid || amount > effectiveLimit) {
                         skipped++
                         continue
                     }
@@ -391,5 +406,67 @@ object PatternAlgorithms {
         }
 
         return ParseResult(items, skipped, blockedList)
+    }
+
+    /**
+     * Validates all bet amounts inside a Quick Entry text string using the shared [validateBetAmount] rule.
+     */
+    fun validateQuickEntryAmounts(text: String, mode: Int): BetAmountValidationResult {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return BetAmountValidationResult.Empty
+
+        val tokens = trimmed.split(Regex("[\\s;|\n\r]+|,(?=\\s|$|[0-9]{1,2}[.=rR]|[0-9][abtwABTW]|[pnsxPNSX][0-9])")).filter { it.isNotBlank() }
+        if (tokens.isEmpty()) return BetAmountValidationResult.Empty
+
+        for (rawToken in tokens) {
+            val token = rawToken.trim()
+            if (token.contains("=") && token.contains("/")) {
+                val eqParts = token.split("=")
+                if (eqParts.size == 2) {
+                    val amtParts = eqParts[1].split("/")
+                    val v1 = validateBetAmount(amtParts.getOrNull(0))
+                    if (!v1.isValid) return v1
+                    val revStr = amtParts.getOrNull(1)?.trim().orEmpty()
+                    if (revStr != "0") {
+                        val v2 = validateBetAmount(revStr)
+                        if (!v2.isValid) return v2
+                    }
+                    continue
+                }
+            }
+            if (token.contains("=")) {
+                val parts = token.split("=")
+                if (parts.size == 2) {
+                    val v = validateBetAmount(parts[1])
+                    if (!v.isValid) return v
+                    continue
+                }
+            }
+            if (token.contains("r", ignoreCase = true)) {
+                val rIndex = token.indexOfFirst { it.equals('r', ignoreCase = true) }
+                if (rIndex > 0) {
+                    val amtPart = token.substring(rIndex + 1)
+                    val v = validateBetAmount(amtPart)
+                    if (!v.isValid) return v
+                    continue
+                }
+            }
+            if (mode == 2) {
+                val low = token.lowercase()
+                val m1 = Regex("^(\\d)([abtw])(.+)$").find(low)
+                if (m1 != null) {
+                    val v = validateBetAmount(m1.groupValues[3])
+                    if (!v.isValid) return v
+                    continue
+                }
+                val m2 = Regex("^([pnsx])(.+)$").find(low)
+                if (m2 != null) {
+                    val v = validateBetAmount(m2.groupValues[2])
+                    if (!v.isValid) return v
+                    continue
+                }
+            }
+        }
+        return BetAmountValidationResult.Valid
     }
 }

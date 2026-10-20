@@ -136,4 +136,64 @@ class ExampleUnitTest {
         val rX = PatternAlgorithms.parseQuickEntryMode2("x200", blocked, maxBet)
         assertEquals(20, rX.items.size)
     }
+
+    @Test
+    fun testEmptyInputParsingAndConditionalSaveButton() {
+        assertEquals(0L, com.example.ui.MainViewModel.parseAmountOrZero(""))
+        assertEquals(0L, com.example.ui.MainViewModel.parseAmountOrZero("   "))
+        assertEquals(5000L, com.example.ui.MainViewModel.parseAmountOrZero(" 5000 "))
+
+        assertEquals(0.0, com.example.ui.MainViewModel.parseDoubleOrZero(""), 0.001)
+        assertEquals(0.0, com.example.ui.MainViewModel.parseDoubleOrZero("  "), 0.001)
+        assertEquals(15.5, com.example.ui.MainViewModel.parseDoubleOrZero("15.5"), 0.001)
+
+        // Save button visibility: hidden when blank or equal to saved value
+        assertFalse(com.example.ui.MainViewModel.shouldShowSaveButton("", ""))
+        assertFalse(com.example.ui.MainViewModel.shouldShowSaveButton("   ", ""))
+        assertFalse(com.example.ui.MainViewModel.shouldShowSaveButton("88", "88"))
+        assertTrue(com.example.ui.MainViewModel.shouldShowSaveButton("88", ""))
+        assertTrue(com.example.ui.MainViewModel.shouldShowSaveButton("99", "88"))
+
+        // Round management Save button visibility: hidden when blank, visible when non-blank
+        assertFalse(com.example.ui.MainViewModel.shouldShowRoundSaveButton(""))
+        assertFalse(com.example.ui.MainViewModel.shouldShowRoundSaveButton("   "))
+        assertTrue(com.example.ui.MainViewModel.shouldShowRoundSaveButton("မနက်ပိုင်း"))
+    }
+
+    @Test
+    fun testDailySummaryProfitLossFormatting() {
+        assertEquals("အမြတ် +12,000", com.example.ui.MainViewModel.formatDailyTotalResultText(12000L))
+        assertEquals("အရှုံး -12,000", com.example.ui.MainViewModel.formatDailyTotalResultText(-12000L))
+        assertEquals("0", com.example.ui.MainViewModel.formatDailyTotalResultText(0L))
+    }
+
+    @Test
+    fun testBetAmountValidator() {
+        // 1. Valid normal amounts (e.g. 100, 1000, 50000, 1000000, and MAX_BET_AMOUNT = 999_999_999L) pass
+        for (validAmt in listOf(100L, 1000L, 50000L, 1000000L, com.example.data.MAX_BET_AMOUNT)) {
+            assertTrue(com.example.data.validateBetAmount(validAmt).isValid)
+            assertTrue(com.example.data.validateBetAmount(validAmt.toString()).isValid)
+        }
+        assertTrue(com.example.data.validateBetAmount(" 50000 ").isValid)
+
+        // 2. 0 and negative values fail
+        assertFalse(com.example.data.validateBetAmount(0L).isValid)
+        assertFalse(com.example.data.validateBetAmount(-1L).isValid)
+        assertFalse(com.example.data.validateBetAmount(-500L).isValid)
+        assertEquals(com.example.data.BetAmountValidationResult.ZeroOrNegative, com.example.data.validateBetAmount("0"))
+        assertEquals(com.example.data.BetAmountValidationResult.ZeroOrNegative, com.example.data.validateBetAmount("-100"))
+
+        // 3. Empty and non-numeric strings fail
+        assertEquals(com.example.data.BetAmountValidationResult.Empty, com.example.data.validateBetAmount(""))
+        assertEquals(com.example.data.BetAmountValidationResult.Empty, com.example.data.validateBetAmount("   "))
+        assertEquals(com.example.data.BetAmountValidationResult.Empty, com.example.data.validateBetAmount(null))
+        assertEquals(com.example.data.BetAmountValidationResult.NonNumeric, com.example.data.validateBetAmount("abc"))
+        assertEquals(com.example.data.BetAmountValidationResult.NonNumeric, com.example.data.validateBetAmount("100.5"))
+        assertEquals(com.example.data.BetAmountValidationResult.NonNumeric, com.example.data.validateBetAmount("12a00"))
+
+        // 4. Values > MAX_BET_AMOUNT (999_999_999L) fail
+        assertFalse(com.example.data.validateBetAmount(com.example.data.MAX_BET_AMOUNT + 1L).isValid)
+        assertEquals(com.example.data.BetAmountValidationResult.TooLarge, com.example.data.validateBetAmount("1000000000"))
+        assertEquals(com.example.data.BetAmountValidationResult.TooLarge, com.example.data.validateBetAmount("99999999999999999999"))
+    }
 }

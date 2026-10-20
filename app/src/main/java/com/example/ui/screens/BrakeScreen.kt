@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -11,18 +12,24 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.ui.MainViewModel
 import com.example.ui.Screen
 import com.example.ui.components.AppHeader
+import com.example.ui.components.AppOutlinedTextField
+import com.example.ui.components.RoundRequiredHelperBanner
+import com.example.ui.components.soundOnInputFocus
 import com.example.ui.components.fmt
 import com.example.ui.theme.*
 
@@ -35,13 +42,22 @@ fun BrakeScreen(
     val sessions by viewModel.sessions.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
     val currentBrakeInput by viewModel.currentBrakeInput.collectAsState()
+    val settings by viewModel.settings.collectAsState()
 
     val vouchers by viewModel.vouchers.collectAsState()
     val layoffs by viewModel.layoffs.collectAsState()
 
-    var showConfirmDialog by remember { mutableStateOf(false) }
+    val hasRound = sessions.isNotEmpty() && selectedSession.isNotBlank() && sessions.any { it.name == selectedSession }
+    val noRoundsText = stringResource(R.string.no_rounds_yet)
 
-    val limit = currentBrakeInput.toLongOrNull() ?: 50000L
+    var showConfirmDialog by rememberSaveable { mutableStateOf(false) }
+    var lastSavedBrakeText by rememberSaveable(settings.brakeLimit) {
+        mutableStateOf(if (settings.brakeLimit > 0L) settings.brakeLimit.toString() else "")
+    }
+
+    val showBrakeSaveBtn = hasRound && MainViewModel.shouldShowSaveButton(currentBrakeInput, lastSavedBrakeText)
+
+    val limit = MainViewModel.parseAmountOrZero(currentBrakeInput)
     val summaries = remember(vouchers, layoffs, selectedDate, selectedSession) {
         viewModel.getAggregatedNumbers()
     }
@@ -70,13 +86,15 @@ fun BrakeScreen(
                 onBack = { viewModel.goBack() }
             )
 
-            // Header input "ဘရိတ် :", date and session
+            // Header input "ဘရိတ်", date and session
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                RoundRequiredHelperBanner(visible = !hasRound)
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -89,7 +107,7 @@ fun BrakeScreen(
                         fontWeight = FontWeight.Medium
                     )
                     Text(
-                        text = "အကြိမ် : $selectedSession",
+                        text = "${stringResource(R.string.round_label)} : ${if (hasRound) selectedSession else noRoundsText}",
                         color = LuckyHeader,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
@@ -101,45 +119,37 @@ fun BrakeScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        text = "ဘရိတ် :",
-                        color = LuckyTextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-
-                    OutlinedTextField(
+                    AppOutlinedTextField(
                         value = currentBrakeInput,
                         onValueChange = { viewModel.updateBrakeLimit(it.filter { c -> c.isDigit() }) },
+                        enabled = hasRound,
+                        label = { Text(stringResource(R.string.label_brake)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = LuckyHeader,
-                            unfocusedBorderColor = LuckyBorder,
-                            focusedTextColor = LuckyTextPrimary,
-                            unfocusedTextColor = LuckyTextPrimary,
-                            focusedContainerColor = LuckyCard,
-                            unfocusedContainerColor = LuckyCard
-                        ),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
+                            .soundOnInputFocus()
                             .testTag("brake_limit_input")
                     )
 
-                    Button(
-                        onClick = { viewModel.saveBrakeLimit() },
-                        colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        modifier = Modifier.height(48.dp)
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("သိမ်းမည်", fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                    AnimatedVisibility(visible = showBrakeSaveBtn) {
+                        Button(
+                            onClick = {
+                                viewModel.saveBrakeLimit()
+                                lastSavedBrakeText = currentBrakeInput.trim()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .height(48.dp)
+                                .testTag("brake_save_btn")
+                        ) {
+                            Icon(Icons.Default.Save, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(stringResource(R.string.action_save), fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                        }
                     }
                 }
             }
@@ -337,56 +347,35 @@ fun BrakeScreen(
                             .padding(8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Left Column Buttons aligned with Left Table
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        Button(
+                            onClick = { viewModel.navigateTo(Screen.SETTLEMENT) },
+                            colors = ButtonDefaults.buttonColors(containerColor = LuckySuccess, contentColor = Color.White),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                            modifier = Modifier.weight(1f).height(38.dp).testTag("goto_settlement_btn")
                         ) {
-                            Button(
-                                onClick = { viewModel.saveBrakeLimit() },
-                                colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-                                modifier = Modifier.weight(1f).height(38.dp)
-                            ) {
-                                Text("သိမ်းမည်", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                            }
-
-                            Button(
-                                onClick = { viewModel.navigateTo(Screen.SETTLEMENT) },
-                                colors = ButtonDefaults.buttonColors(containerColor = LuckySuccess, contentColor = Color.White),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-                                modifier = Modifier.weight(1f).height(38.dp).testTag("goto_settlement_btn")
-                            ) {
-                                Text("ရက်ချုပ်", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                            }
+                            Text("ရက်ချုပ်", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                         }
 
-                        // Right Column Buttons aligned with Right Table
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        Button(
+                            onClick = { showConfirmDialog = true },
+                            enabled = hasRound,
+                            colors = ButtonDefaults.buttonColors(containerColor = LuckyDanger, contentColor = Color.White),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                            modifier = Modifier.weight(1f).height(38.dp).testTag("open_layoff_dialog_btn")
                         ) {
-                            Button(
-                                onClick = { showConfirmDialog = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = LuckyDanger, contentColor = Color.White),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-                                modifier = Modifier.weight(1f).height(38.dp).testTag("open_layoff_dialog_btn")
-                            ) {
-                                Text("တင်မည်", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                            }
+                            Text("တင်မည်", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                        }
 
-                            Button(
-                                onClick = { viewModel.navigateTo(Screen.LAYOFF_HISTORY) },
-                                colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-                                modifier = Modifier.weight(1f).height(38.dp).testTag("goto_layoff_history_btn")
-                            ) {
-                                Text("မှတ်တမ်း", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                            }
+                        Button(
+                            onClick = { viewModel.navigateTo(Screen.LAYOFF_HISTORY) },
+                            colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                            modifier = Modifier.weight(1f).height(38.dp).testTag("goto_layoff_history_btn")
+                        ) {
+                            Text("မှတ်တမ်း", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                         }
                     }
                 }
@@ -397,60 +386,60 @@ fun BrakeScreen(
         if (showConfirmDialog) {
             AlertDialog(
                 onDismissRequest = { showConfirmDialog = false },
-                containerColor = LuckyCard,
+                containerColor = MaterialTheme.colorScheme.surface,
                 shape = RoundedCornerShape(14.dp),
                 title = {
                     Text(
-                        text = "တင်ကွက်များ တင်ရန် သေချာပါသလား?",
-                        color = LuckyTextPrimary,
-                        fontSize = 16.sp,
+                        text = stringResource(R.string.layoff_confirm_title),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 18.sp,
+                        lineHeight = 26.sp,
                         fontWeight = FontWeight.Bold
                     )
                 },
                 text = {
-                    Text(
-                        text = "ဘရိတ် (${fmt(limit)}) ထက် ကျော်လွန်နေသော တင်ကွက်များကို စာရင်းသွင်းမည်။\nတင်ရန် စုစုပေါင်း: ${fmt(totalLayoff)} (${rightLayoffList.size} လုံး)",
-                        color = LuckyTextSecondary,
-                        fontSize = 13.sp
-                    )
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.layoff_confirm_message, fmt(limit)),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 14.sp,
+                            lineHeight = 22.sp
+                        )
+                        Text(
+                            text = stringResource(R.string.layoff_confirm_summary, fmt(totalLayoff), rightLayoffList.size),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 14.sp,
+                            lineHeight = 22.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 },
                 confirmButton = {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        OutlinedButton(
-                            onClick = {
-                                showConfirmDialog = false
-                                viewModel.executeLayoff(isAll = false)
-                            },
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = LuckyHeader),
-                            modifier = Modifier.testTag("layoff_30_btn")
-                        ) {
-                            Text("၃၀ လုံး တင်မည်", fontWeight = FontWeight.Bold)
-                        }
+                        com.example.ui.components.CompactTextButton(
+                            text = stringResource(R.string.action_layoff_cancel),
+                            onClick = { showConfirmDialog = false },
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            horizontalPadding = 16.dp,
+                            modifier = Modifier.testTag("layoff_cancel_btn")
+                        )
 
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Button(
+                        com.example.ui.components.CompactFilledButton(
+                            text = stringResource(R.string.action_layoff_confirm),
                             onClick = {
                                 showConfirmDialog = false
                                 viewModel.executeLayoff(isAll = true)
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = LuckyDanger, contentColor = Color.White),
+                            containerColor = LuckyDanger,
+                            contentColor = Color.White,
+                            horizontalPadding = 16.dp,
                             modifier = Modifier.testTag("layoff_all_btn")
-                        ) {
-                            Text("အားလုံး တင်မည်", fontWeight = FontWeight.Bold)
-                        }
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = { showConfirmDialog = false },
-                        colors = ButtonDefaults.textButtonColors(contentColor = LuckyTextSecondary)
-                    ) {
-                        Text("မလုပ်တော့ပါ")
+                        )
                     }
                 }
             )

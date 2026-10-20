@@ -4,6 +4,7 @@ package com.example.ui.screens
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,28 +22,40 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.data.Agent
+import com.example.data.BetAmountValidationResult
 import com.example.data.BetItem
+import com.example.data.validateBetAmount
 import com.example.logic.PatternAlgorithms
 import com.example.ui.MainViewModel
 import com.example.ui.Screen
+import com.example.ui.components.AppOutlinedTextField
 import com.example.ui.components.CloverLogo
+import com.example.ui.components.CompactFilledButton
+import com.example.ui.components.CompactTextButton
 import com.example.ui.components.DeleteConfirmDialog
+import com.example.ui.components.EntryLongPressDropdownMenu
+import com.example.ui.components.RoundRequiredHelperBanner
+import com.example.ui.components.entryCombinedClickable
 import com.example.ui.components.fmt
-import com.example.ui.components.recordLongPress
+import com.example.ui.components.soundOnInputFocus
 import com.example.ui.theme.*
+import kotlinx.coroutines.delay
 
 @Composable
 fun NumberEntryScreen(
@@ -55,23 +68,48 @@ fun NumberEntryScreen(
     val currentAgent by viewModel.entryAgent.collectAsState()
     val agents by viewModel.agents.collectAsState()
     val entryItems by viewModel.entryItems.collectAsState()
-    val settings by viewModel.settings.collectAsState()
     val blocked by viewModel.blocked.collectAsState()
+    val invalidAmountText = stringResource(R.string.error_invalid_bet_amount)
+
+    val hasRound = sessions.isNotEmpty() && selectedSession.isNotBlank() && sessions.any { it.name == selectedSession }
+    val isCommissionSet = currentAgent != null
+    val canTriggerEntryMenu = hasRound && isCommissionSet
+    val noRoundsText = stringResource(R.string.no_rounds_yet)
 
     val listState = rememberLazyListState()
 
-    // Keypad state
-    var inputNumber by remember { mutableStateOf("") }
-    var inputPattern by remember { mutableStateOf("ဒဲ့") }
-    var inputAmount by remember { mutableStateOf("") }
-    var isReverseOn by remember { mutableStateOf(false) }
-    var activeField by remember { mutableStateOf("NUMBER") } // "NUMBER" or "AMOUNT"
+    // Keypad state — no preselected pattern or default values
+    var inputNumber by rememberSaveable { mutableStateOf("") }
+    var inputPattern by rememberSaveable { mutableStateOf("") }
+    var inputAmount by rememberSaveable { mutableStateOf("") }
+    var isReverseOn by rememberSaveable { mutableStateOf(false) }
+    var activeField by rememberSaveable { mutableStateOf("NUMBER") } // "NUMBER" or "AMOUNT"
+    var amountValidationError by rememberSaveable { mutableStateOf(false) }
 
-    // Dialog states
-    var quickEntryMode by remember { mutableStateOf<Int?>(null) } // 1 or 2
-    var showKwayDialog by remember { mutableStateOf(false) }
-    var editingItemIndex by remember { mutableStateOf<Int?>(null) }
-    var showAgentPicker by remember { mutableStateOf(false) }
+    // Debounced validation (180ms) on typed bet amount
+    LaunchedEffect(inputAmount) {
+        if (inputAmount.isEmpty()) {
+            amountValidationError = false
+        } else {
+            delay(180)
+            amountValidationError = !validateBetAmount(inputAmount).isValid
+        }
+    }
+
+    // Dialog / Menu states
+    var quickEntryMode by rememberSaveable { mutableStateOf<Int?>(null) } // 1 or 2
+    var showKwayDialog by rememberSaveable { mutableStateOf(false) }
+    var menuItemIndex by rememberSaveable { mutableStateOf<Int?>(null) }
+    var editingItemIndex by rememberSaveable { mutableStateOf<Int?>(null) }
+    var deletingItemIndex by rememberSaveable { mutableStateOf<Int?>(null) }
+    var showAgentPicker by rememberSaveable { mutableStateOf(false) }
+
+    // Clear long-press menu if commission is unset
+    LaunchedEffect(canTriggerEntryMenu) {
+        if (!canTriggerEntryMenu) {
+            menuItemIndex = null
+        }
+    }
 
     // Auto scroll to newest row when entryItems change
     LaunchedEffect(entryItems.size) {
@@ -87,6 +125,10 @@ fun NumberEntryScreen(
     val totalAmount = entryItems.sumOf { it.a }
 
     fun onKeypadNumPress(num: String) {
+        if (!hasRound) {
+            viewModel.showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
+            return
+        }
         if (activeField == "NUMBER") {
             if (inputPattern == "ခွေ") {
                 if (inputNumber.length < 9) {
@@ -101,14 +143,12 @@ fun NumberEntryScreen(
             }
         } else {
             val digitsOnly = num.filter { it.isDigit() }
-            if (inputAmount.length < 8) {
-                inputAmount = (inputAmount + digitsOnly).take(8)
-            }
+            inputAmount += digitsOnly
         }
     }
 
     fun handleAddBet(withDoublesForKway: Boolean = false) {
-        if (sessions.isEmpty() && selectedSession.isEmpty()) {
+        if (!hasRound) {
             viewModel.showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
             return
         }
@@ -118,29 +158,29 @@ fun NumberEntryScreen(
             return
         }
 
-        val amount = inputAmount.toLongOrNull() ?: 0L
-        if (amount <= 0) {
-            viewModel.showToast("ပမာဏ ရိုက်ထည့်ပါ")
+        val amountValidation = validateBetAmount(inputAmount)
+        if (!amountValidation.isValid) {
+            amountValidationError = true
+            viewModel.showToast(invalidAmountText)
             activeField = "AMOUNT"
             return
         }
-        if (settings.maxBet > 0 && amount > settings.maxBet) {
-            viewModel.showToast("သတ်မှတ်ထားသော အများဆုံးထိုးကြေး (${settings.maxBet}) ထက် ကျော်လွန်နေပါသည်")
-            return
-        }
+        val amount = MainViewModel.parseAmountOrZero(inputAmount)
 
-        if (inputPattern == "ခွေ") {
+        val effectivePattern = inputPattern.ifEmpty { "ဒဲ့" }
+
+        if (effectivePattern == "ခွေ") {
             val distinctDigits = inputNumber.filter { it.isDigit() }.toSet()
             if (distinctDigits.size < 2) {
                 viewModel.showToast("ခွေရန် အနည်းဆုံး ဂဏန်း ၂ လုံး ရိုက်ပါ")
                 return
             }
-        } else if (inputPattern in listOf("ထိပ်", "နောက်", "အပါ", "ဘရိတ်")) {
+        } else if (effectivePattern in listOf("ထိပ်", "နောက်", "အပါ", "ဘရိတ်")) {
             if (inputNumber.isEmpty()) {
                 viewModel.showToast("ဂဏန်း ၁ လုံး ရိုက်ထည့်ပါ")
                 return
             }
-        } else if (inputPattern == "ဒဲ့") {
+        } else if (effectivePattern == "ဒဲ့") {
             if (inputNumber.length != 2) {
                 viewModel.showToast("၂ လုံးဂဏန်း အပြည့်ရိုက်ပါ")
                 return
@@ -148,7 +188,7 @@ fun NumberEntryScreen(
         }
 
         val generatedNumbers = PatternAlgorithms.generateNumbersForPattern(
-            pattern = inputPattern,
+            pattern = effectivePattern,
             inputNumber = inputNumber,
             withReverse = isReverseOn,
             withDoublesForKway = withDoublesForKway
@@ -177,7 +217,7 @@ fun NumberEntryScreen(
         if (betList.isNotEmpty()) {
             viewModel.addEntryItems(betList)
             inputNumber = ""
-            inputPattern = "ဒဲ့"
+            inputPattern = ""
             isReverseOn = false
             activeField = "NUMBER"
         }
@@ -207,7 +247,7 @@ fun NumberEntryScreen(
                     ) {
                         CloverLogo(size = 26.dp)
                         Text(
-                            text = "နေ့စွဲ : $selectedDate , အကြိမ် : $selectedSession",
+                            text = "နေ့စွဲ : $selectedDate , ${stringResource(R.string.round_label)} : ${if (hasRound) selectedSession else noRoundsText}",
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
@@ -222,11 +262,18 @@ fun NumberEntryScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "ပိတ်မည်",
+                            contentDescription = stringResource(R.string.action_close),
                             tint = Color.White
                         )
                     }
                 }
+            }
+
+            if (!hasRound) {
+                RoundRequiredHelperBanner(
+                    visible = true,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                )
             }
 
             // Agent Info Line: ထိုးသူ : agent name , ဘောင်ချာများ ကြည့်ရန် နှိပ်ပါ
@@ -241,7 +288,7 @@ fun NumberEntryScreen(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable { showAgentPicker = true }
+                    modifier = Modifier.clickable(enabled = hasRound) { showAgentPicker = true }
                 ) {
                     Text(
                         text = "ထိုးသူ : ",
@@ -298,7 +345,7 @@ fun NumberEntryScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "ဂဏန်းနှင့် ပမာဏ ရိုက်ထည့်ပါ",
+                            text = if (hasRound) "ဂဏန်းနှင့် ပမာဏ ရိုက်ထည့်ပါ" else stringResource(R.string.add_round_first),
                             color = LuckyTextMuted,
                             fontSize = 13.sp
                         )
@@ -309,46 +356,77 @@ fun NumberEntryScreen(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         itemsIndexed(entryItems) { index, item ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .recordLongPress(
-                                        onLongPress = {
-                                            editingItemIndex = index
-                                        }
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .entryCombinedClickable(
+                                            enabled = canTriggerEntryMenu,
+                                            itemDescription = "${item.n} ပမာဏ ${item.a}",
+                                            onClick = {},
+                                            onShowMenu = {
+                                                if (canTriggerEntryMenu) {
+                                                    menuItemIndex = index
+                                                }
+                                            },
+                                            onEditAction = {
+                                                if (canTriggerEntryMenu) {
+                                                    viewModel.onEditActionStarted()
+                                                    editingItemIndex = index
+                                                }
+                                            },
+                                            onDeleteAction = {
+                                                if (canTriggerEntryMenu) {
+                                                    deletingItemIndex = index
+                                                }
+                                            }
+                                        )
+                                        .background(if (index % 2 == 0) LuckyCard else LuckyCardDark)
+                                        .padding(horizontal = 14.dp, vertical = 9.dp)
+                                        .testTag("bet_entry_row_$index"),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "${index + 1}.",
+                                        color = LuckyTextSecondary,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        modifier = Modifier.weight(0.8f)
                                     )
-                                    .background(if (index % 2 == 0) LuckyCard else LuckyCardDark)
-                                    .padding(horizontal = 14.dp, vertical = 9.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "${index + 1}.",
-                                    color = LuckyTextSecondary,
-                                    fontSize = 13.sp,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    modifier = Modifier.weight(0.8f)
-                                )
-                                Text(
-                                    text = item.n,
-                                    color = LuckyHeader,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    modifier = Modifier.weight(1.2f),
-                                    textAlign = TextAlign.Center
-                                )
-                                Text(
-                                    text = fmt(item.a),
-                                    color = LuckyTextPrimary,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    modifier = Modifier.weight(1.5f),
-                                    textAlign = TextAlign.End
+                                    Text(
+                                        text = item.n,
+                                        color = LuckyHeader,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        modifier = Modifier.weight(1.2f),
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Text(
+                                        text = fmt(item.a),
+                                        color = LuckyTextPrimary,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.sp,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        modifier = Modifier.weight(1.5f),
+                                        textAlign = TextAlign.End
+                                    )
+                                }
+
+                                EntryLongPressDropdownMenu(
+                                    expanded = canTriggerEntryMenu && menuItemIndex == index,
+                                    onDismiss = { menuItemIndex = null },
+                                    onEdit = {
+                                        viewModel.onEditActionStarted()
+                                        editingItemIndex = index
+                                    },
+                                    onDelete = {
+                                        deletingItemIndex = index
+                                    }
                                 )
                             }
                             HorizontalDivider(color = LuckyBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
@@ -359,7 +437,7 @@ fun NumberEntryScreen(
 
             // Action Summary Bar under the table:
             // "အမြန်ထိုး", "စုစုပေါင်း = N (X ကွက်)", and "ထိုးရန်" button (stays on this screen!)
-            var quickMenuExpanded by remember { mutableStateOf(false) }
+            var quickMenuExpanded by rememberSaveable { mutableStateOf(false) }
 
             Row(
                 modifier = Modifier
@@ -368,19 +446,28 @@ fun NumberEntryScreen(
                     .border(width = 1.dp, color = LuckyBorder)
                     .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Box {
                     Button(
                         onClick = { quickMenuExpanded = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        modifier = Modifier.height(34.dp).testTag("quick_entry_dropdown_btn")
+                        enabled = hasRound,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = LuckyHeader,
+                            contentColor = Color.White,
+                            disabledContainerColor = LuckyBorder.copy(alpha = 0.75f),
+                            disabledContentColor = LuckyTextMuted
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                        modifier = Modifier
+                            .height(40.dp)
+                            .defaultMinSize(minWidth = 1.dp, minHeight = 40.dp)
+                            .testTag("quick_entry_dropdown_btn")
                     ) {
                         Icon(Icons.Default.FlashOn, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("အမြန်ထိုး", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.action_quick_bet), fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                     }
 
                     DropdownMenu(
@@ -389,14 +476,14 @@ fun NumberEntryScreen(
                         modifier = Modifier.background(LuckyCard)
                     ) {
                         DropdownMenuItem(
-                            text = { Text("အမြန်ထိုး ၁", color = LuckyTextPrimary) },
+                            text = { Text(stringResource(R.string.quick_bet_mode_1), color = LuckyTextPrimary) },
                             onClick = {
                                 quickMenuExpanded = false
                                 quickEntryMode = 1
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("အမြန်ထိုး ၂", color = LuckyTextPrimary) },
+                            text = { Text(stringResource(R.string.quick_bet_mode_2), color = LuckyTextPrimary) },
                             onClick = {
                                 quickMenuExpanded = false
                                 quickEntryMode = 2
@@ -411,24 +498,27 @@ fun NumberEntryScreen(
                     color = LuckyTextPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("entry_total_label")
                 )
 
-                // "ထိုးရန်" Button (Saves voucher and stays on NumberEntryScreen!)
-                Button(
+                // Compact "ထိုးရန်" Button (Saves voucher and stays on NumberEntryScreen!)
+                CompactFilledButton(
+                    text = stringResource(R.string.action_place_bet),
                     onClick = {
                         viewModel.commitCurrentVoucher()
                     },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = LuckySuccess,
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
-                    modifier = Modifier.height(34.dp).testTag("submit_voucher_btn")
-                ) {
-                    Text("ထိုးရန်", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                }
+                    enabled = hasRound && entryItems.isNotEmpty(),
+                    containerColor = LuckySuccess,
+                    contentColor = Color.White,
+                    horizontalPadding = 20.dp,
+                    cornerRadius = 10.dp,
+                    modifier = Modifier.testTag("submit_voucher_btn")
+                )
             }
 
             // Compact Keypad (pinned to bottom, 5 equal columns, 4dp gap)
@@ -449,11 +539,19 @@ fun NumberEntryScreen(
                         title = "ဂဏန်း",
                         value = inputNumber,
                         isActive = activeField == "NUMBER",
-                        onClick = { activeField = "NUMBER" },
-                        modifier = Modifier.weight(1f)
+                        onClick = {
+                            viewModel.onInputFocusOrTap()
+                            activeField = "NUMBER"
+                        },
+                        modifier = Modifier.weight(1f).testTag("preview_cell_number")
                     )
 
-                    val patternDisplay = if (isReverseOn) "$inputPattern (အာ)" else inputPattern
+                    val patternDisplay = when {
+                        inputPattern.isNotEmpty() && isReverseOn -> "$inputPattern (အာ)"
+                        inputPattern.isNotEmpty() -> inputPattern
+                        isReverseOn -> "အာ"
+                        else -> ""
+                    }
                     PreviewCell(
                         title = "အမျိုးအစား",
                         value = patternDisplay,
@@ -466,12 +564,29 @@ fun NumberEntryScreen(
                         title = "ပမာဏ",
                         value = inputAmount,
                         isActive = activeField == "AMOUNT",
-                        onClick = { activeField = "AMOUNT" },
-                        modifier = Modifier.weight(1f)
+                        isError = amountValidationError,
+                        onClick = {
+                            viewModel.onInputFocusOrTap()
+                            activeField = "AMOUNT"
+                        },
+                        modifier = Modifier.weight(1f).testTag("preview_cell_amount")
                     )
                 }
 
-                // Horizontally Scrollable Pattern Row
+                if (amountValidationError) {
+                    Text(
+                        text = invalidAmountText,
+                        color = LuckyDanger,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp)
+                            .testTag("entry_amount_error_text")
+                    )
+                }
+
+                // Horizontally Scrollable Pattern Row (starts with nothing selected)
                 val patterns = listOf("ပါဝါ", "ညီအစ်ကို", "ထိပ်", "နောက်", "အပူး", "စုံစုံ", "မမ", "စုံမ", "မစုံ", "ဘရိတ်")
                 Row(
                     modifier = Modifier
@@ -484,7 +599,7 @@ fun NumberEntryScreen(
                         text = "ဒဲ့",
                         isSelected = inputPattern == "ဒဲ့",
                         onClick = {
-                            inputPattern = "ဒဲ့"
+                            inputPattern = if (inputPattern == "ဒဲ့") "" else "ဒဲ့"
                             activeField = "NUMBER"
                         }
                     )
@@ -494,7 +609,7 @@ fun NumberEntryScreen(
                             text = p,
                             isSelected = inputPattern == p,
                             onClick = {
-                                inputPattern = p
+                                inputPattern = if (inputPattern == p) "" else p
                                 if (p in listOf("ထိပ်", "နောက်", "အပါ", "ဘရိတ်")) {
                                     activeField = "NUMBER"
                                 }
@@ -513,7 +628,7 @@ fun NumberEntryScreen(
                         bgColor = if (inputPattern == "နက္ခတ်") LuckySuccess else LuckyHeader,
                         textColor = Color.White,
                         modifier = Modifier.weight(1f),
-                        onClick = { inputPattern = "နက္ခတ်" }
+                        onClick = { inputPattern = if (inputPattern == "နက္ခတ်") "" else "နက္ခတ်" }
                     )
                     NumKey("1", Modifier.weight(1f)) { onKeypadNumPress("1") }
                     NumKey("2", Modifier.weight(1f)) { onKeypadNumPress("2") }
@@ -538,7 +653,7 @@ fun NumberEntryScreen(
                         textColor = Color.White,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            inputPattern = "ခွေ"
+                            inputPattern = if (inputPattern == "ခွေ") "" else "ခွေ"
                             activeField = "NUMBER"
                         }
                     )
@@ -551,12 +666,13 @@ fun NumberEntryScreen(
                         textColor = Color.White,
                         modifier = Modifier.weight(1f),
                         onClick = {
+                            viewModel.onInputFocusOrTap()
                             activeField = if (activeField == "NUMBER") "AMOUNT" else "NUMBER"
                         }
                     )
                 }
 
-                // Row 3: အပါ | 7 | 8 | 9 | ENTER
+                // Row 3: အပါ | 7 | 8 | 9 | ရွှေ့
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -567,7 +683,7 @@ fun NumberEntryScreen(
                         textColor = Color.White,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            inputPattern = "အပါ"
+                            inputPattern = if (inputPattern == "အပါ") "" else "အပါ"
                             activeField = "NUMBER"
                         }
                     )
@@ -580,12 +696,13 @@ fun NumberEntryScreen(
                         textColor = Color.White,
                         modifier = Modifier.weight(1f),
                         onClick = {
+                            viewModel.onInputFocusOrTap()
                             activeField = if (activeField == "NUMBER") "AMOUNT" else "NUMBER"
                         }
                     )
                 }
 
-                // Row 4: ဖျက် | 0 | 00 | 000 | ထည့်
+                // Row 4: ဖျက် | 0 | 00 | 000 | OK
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -608,15 +725,26 @@ fun NumberEntryScreen(
                     NumKey("0", Modifier.weight(1f)) { onKeypadNumPress("0") }
                     NumKey("00", Modifier.weight(1f)) { onKeypadNumPress("00") }
                     NumKey("000", Modifier.weight(1f)) { onKeypadNumPress("000") }
+                    val isOkEnabled = hasRound && !amountValidationError
                     KeypadBtn(
                         text = "OK",
-                        bgColor = LuckySuccess,
+                        bgColor = if (isOkEnabled) LuckySuccess else LuckyTextMuted,
                         textColor = Color.White,
                         isBold = true,
+                        enabled = isOkEnabled,
                         modifier = Modifier.weight(1f).testTag("keypad_ok_btn"),
                         onClick = {
-                            if (inputPattern == "ခွေ") {
-                                showKwayDialog = true
+                            if (!hasRound) {
+                                viewModel.showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
+                            } else if (inputPattern == "ခွေ") {
+                                val amtValid = validateBetAmount(inputAmount).isValid
+                                if (!amtValid) {
+                                    amountValidationError = true
+                                    viewModel.showToast(invalidAmountText)
+                                    activeField = "AMOUNT"
+                                } else {
+                                    showKwayDialog = true
+                                }
                             } else {
                                 handleAddBet(false)
                             }
@@ -658,23 +786,34 @@ fun NumberEntryScreen(
             )
         }
 
-        // Edit / Delete Bet Item Dialog on Long-press (550ms)
+        // Edit Bet Item Dialog (opened via "ပြင်မည်" in the long-press menu)
         editingItemIndex?.let { index ->
             if (index in entryItems.indices) {
                 val item = entryItems[index]
                 EditBetItemDialog(
                     initialNumber = item.n,
                     initialAmount = item.a,
-                    maxBet = settings.maxBet,
                     blocked = blocked,
                     onDismiss = { editingItemIndex = null },
                     onSave = { newNum, newAmt ->
                         viewModel.editEntryItem(index, newNum, newAmt)
                         editingItemIndex = null
                     },
-                    onDelete = {
+                    onDelete = null
+                )
+            }
+        }
+
+        // Delete Confirm Dialog (opened via "ဖျက်မည်" in the long-press menu)
+        deletingItemIndex?.let { index ->
+            if (index in entryItems.indices) {
+                val item = entryItems[index]
+                DeleteConfirmDialog(
+                    itemName = "${item.n} = ${fmt(item.a)}",
+                    onDismiss = { deletingItemIndex = null },
+                    onConfirm = {
                         viewModel.deleteEntryItem(index)
-                        editingItemIndex = null
+                        deletingItemIndex = null
                     }
                 )
             }
@@ -684,7 +823,6 @@ fun NumberEntryScreen(
         quickEntryMode?.let { mode ->
             QuickEntryDialog(
                 mode = mode,
-                maxBet = settings.maxBet,
                 blocked = blocked,
                 onDismiss = { quickEntryMode = null },
                 onAddItems = { parsedItems, skipped, blockedList ->
@@ -727,17 +865,23 @@ fun PreviewCell(
     title: String,
     value: String,
     isActive: Boolean,
+    isError: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val borderColor = when {
+        isError -> LuckyDanger
+        isActive -> LuckyHeader
+        else -> LuckyBorder
+    }
     Box(
         modifier = modifier
             .height(38.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(if (isActive) Color(0xFFE3F2FD) else LuckyCardDark)
+            .background(Color.White)
             .border(
-                width = if (isActive) 1.5.dp else 1.dp,
-                color = if (isActive) LuckyHeader else LuckyBorder,
+                width = if (isActive || isError) 1.5.dp else 1.dp,
+                color = borderColor,
                 shape = RoundedCornerShape(8.dp)
             )
             .clickable(onClick = onClick)
@@ -747,7 +891,7 @@ fun PreviewCell(
         if (value.isBlank()) {
             Text(
                 text = title,
-                color = LuckyTextMuted,
+                color = LuckyLabelDarkGrey,
                 fontSize = 12.sp,
                 maxLines = 1,
                 softWrap = false,
@@ -756,9 +900,9 @@ fun PreviewCell(
         } else {
             Text(
                 text = value,
-                color = if (isActive) LuckyHeader else LuckyTextPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
+                color = Color.Black,
+                fontWeight = FontWeight.Medium,
+                fontSize = 16.sp,
                 maxLines = 1,
                 softWrap = false,
                 textAlign = TextAlign.Center
@@ -802,6 +946,7 @@ fun KeypadBtn(
     bgColor: Color,
     textColor: Color,
     isBold: Boolean = false,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
@@ -811,7 +956,7 @@ fun KeypadBtn(
             .clip(RoundedCornerShape(10.dp))
             .background(bgColor)
             .border(0.5.dp, LuckyBorder, RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 2.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -849,18 +994,34 @@ fun NumKey(
 fun EditBetItemDialog(
     initialNumber: String,
     initialAmount: Long,
-    maxBet: Long,
     blocked: Set<String>,
     onDismiss: () -> Unit,
     onSave: (String, Long) -> Unit,
-    onDelete: () -> Unit
+    onDelete: (() -> Unit)? = null
 ) {
-    var numberStr by remember { mutableStateOf(initialNumber) }
-    var amountStr by remember { mutableStateOf(initialAmount.toString()) }
-    var errorMsg by remember { mutableStateOf<String?>(null) }
-    var showDeleteConfirm by remember { mutableStateOf(false) }
+    val savedAmtStr = if (initialAmount > 0L) initialAmount.toString() else ""
+    var numberStr by rememberSaveable(initialNumber) { mutableStateOf(initialNumber) }
+    var amountStr by rememberSaveable(initialAmount) { mutableStateOf(savedAmtStr) }
+    var errorMsg by rememberSaveable { mutableStateOf<String?>(null) }
+    var debouncedAmountError by rememberSaveable { mutableStateOf(false) }
+    var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
+    val invalidAmountText = stringResource(R.string.error_invalid_bet_amount)
 
-    if (showDeleteConfirm) {
+    LaunchedEffect(amountStr) {
+        if (amountStr.isEmpty()) {
+            debouncedAmountError = false
+        } else {
+            delay(180)
+            debouncedAmountError = !validateBetAmount(amountStr).isValid
+        }
+    }
+
+    val isAmountImmediatelyValid = validateBetAmount(amountStr).isValid
+    val hasChanges = numberStr.trim() != initialNumber || amountStr.trim() != savedAmtStr
+    val showSaveBtn = numberStr.isNotBlank() && amountStr.isNotBlank() && hasChanges
+    val isSaveEnabled = !debouncedAmountError && isAmountImmediatelyValid && numberStr.trim().length == 2
+
+    if (showDeleteConfirm && onDelete != null) {
         DeleteConfirmDialog(
             itemName = "$initialNumber = $initialAmount",
             onDismiss = { showDeleteConfirm = false },
@@ -874,10 +1035,17 @@ fun EditBetItemDialog(
             onDismissRequest = onDismiss,
             containerColor = LuckyCard,
             shape = RoundedCornerShape(14.dp),
-            title = { Text("ဂဏန်း ပြင်ဆင်ရန် / ဖျက်ရန်", color = LuckyTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            title = {
+                Text(
+                    text = "ဂဏန်း ပြင်မည်",
+                    color = LuckyTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
+                    AppOutlinedTextField(
                         value = numberStr,
                         onValueChange = {
                             if (it.length <= 2) {
@@ -885,32 +1053,39 @@ fun EditBetItemDialog(
                                 errorMsg = null
                             }
                         },
-                        label = { Text("ဂဏန်း (၂ လုံး)") },
+                        label = { Text(stringResource(R.string.label_number)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = LuckyHeader,
-                            unfocusedBorderColor = LuckyBorder,
-                            focusedTextColor = LuckyTextPrimary,
-                            unfocusedTextColor = LuckyTextPrimary
-                        )
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .soundOnInputFocus()
+                            .testTag("edit_bet_number_input")
                     )
 
-                    OutlinedTextField(
+                    AppOutlinedTextField(
                         value = amountStr,
                         onValueChange = {
-                            amountStr = it.filter { c -> c.isDigit() }
+                            amountStr = it
                             errorMsg = null
                         },
-                        label = { Text("ပမာဏ") },
+                        label = { Text(stringResource(R.string.label_amount)) },
+                        isError = debouncedAmountError,
+                        supportingText = if (debouncedAmountError) {
+                            {
+                                Text(
+                                    text = invalidAmountText,
+                                    color = LuckyDanger,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.testTag("edit_bet_amount_error_text")
+                                )
+                            }
+                        } else null,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = LuckyHeader,
-                            unfocusedBorderColor = LuckyBorder,
-                            focusedTextColor = LuckyTextPrimary,
-                            unfocusedTextColor = LuckyTextPrimary
-                        )
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .soundOnInputFocus()
+                            .testTag("edit_bet_amount_input")
                     )
 
                     if (errorMsg != null) {
@@ -919,42 +1094,45 @@ fun EditBetItemDialog(
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        val amt = amountStr.toLongOrNull() ?: 0L
-                        if (numberStr.length != 2 || !numberStr.all { it.isDigit() }) {
-                            errorMsg = "ဂဏန်း ၂ လုံး ရိုက်ထည့်ပါ"
-                            return@Button
-                        }
-                        if (amt <= 0) {
-                            errorMsg = "ပမာဏ မှန်ကန်စွာ ထည့်ပါ"
-                            return@Button
-                        }
-                        if (maxBet > 0 && amt > maxBet) {
-                            errorMsg = "သတ်မှတ်ထားသော အများဆုံးထိုးကြေး ($maxBet) ထက် ကျော်လွန်နေပါသည်"
-                            return@Button
-                        }
-                        if (blocked.contains(numberStr)) {
-                            errorMsg = "$numberStr သည် မရဂဏန်း ဖြစ်ပါသည်"
-                            return@Button
-                        }
-                        onSave(numberStr, amt)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White)
-                ) {
-                    Text("သိမ်းမည်", fontWeight = FontWeight.Bold)
+                AnimatedVisibility(visible = showSaveBtn) {
+                    Button(
+                        onClick = {
+                            if (numberStr.length != 2 || !numberStr.all { it.isDigit() }) {
+                                errorMsg = "ဂဏန်း ၂ လုံး ရိုက်ထည့်ပါ"
+                                return@Button
+                            }
+                            val validation = validateBetAmount(amountStr)
+                            if (!validation.isValid) {
+                                debouncedAmountError = true
+                                return@Button
+                            }
+                            val amt = MainViewModel.parseAmountOrZero(amountStr)
+                            if (blocked.contains(numberStr)) {
+                                errorMsg = "$numberStr သည် မရဂဏန်း ဖြစ်ပါသည်"
+                                return@Button
+                            }
+                            onSave(numberStr, amt)
+                        },
+                        enabled = isSaveEnabled,
+                        colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
+                        modifier = Modifier.testTag("edit_bet_save_btn")
+                    ) {
+                        Text(stringResource(R.string.action_save), fontWeight = FontWeight.Bold)
+                    }
                 }
             },
             dismissButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(
-                        onClick = { showDeleteConfirm = true },
-                        colors = ButtonDefaults.textButtonColors(contentColor = LuckyDanger)
-                    ) {
-                        Text("ဖျက်မည်", fontWeight = FontWeight.Bold)
+                    if (onDelete != null) {
+                        TextButton(
+                            onClick = { showDeleteConfirm = true },
+                            colors = ButtonDefaults.textButtonColors(contentColor = LuckyDanger)
+                        ) {
+                            Text(stringResource(R.string.action_delete), fontWeight = FontWeight.Bold)
+                        }
                     }
                     TextButton(onClick = onDismiss) {
-                        Text("မလုပ်တော့ပါ", color = LuckyTextSecondary)
+                        Text(stringResource(R.string.action_cancel), color = LuckyTextSecondary)
                     }
                 }
             }
@@ -965,87 +1143,128 @@ fun EditBetItemDialog(
 @Composable
 fun QuickEntryDialog(
     mode: Int,
-    maxBet: Long,
     blocked: Set<String>,
     onDismiss: () -> Unit,
     onAddItems: (List<BetItem>, Int, List<String>) -> Unit
 ) {
     val context = LocalContext.current
-    var inputText by remember { mutableStateOf("") }
+    var inputText by rememberSaveable { mutableStateOf("") }
+    var debouncedAmountError by rememberSaveable { mutableStateOf(false) }
+    val invalidAmountText = stringResource(R.string.error_invalid_bet_amount)
 
-    val placeholder = if (mode == 1) {
-        "ကြေးတူရင် ---- 01.78=500 | ကြေးတူ R ရင် ---- 01.78R500 |\nကြေးမတူရင် ---- 01.78=500/100"
-    } else {
-        "5a500, 6b600, 1t500, 1w500, p3500, n7500, s500, x200,\n56=2000/1000, 89r350, 79=500"
+    LaunchedEffect(inputText, mode) {
+        if (inputText.isBlank()) {
+            debouncedAmountError = false
+        } else {
+            delay(180)
+            val validation = PatternAlgorithms.validateQuickEntryAmounts(inputText, mode)
+            debouncedAmountError = !validation.isValid
+        }
     }
+
+    val immediateValidation = remember(inputText, mode) {
+        if (inputText.isBlank()) BetAmountValidationResult.Empty
+        else PatternAlgorithms.validateQuickEntryAmounts(inputText, mode)
+    }
+    val isSubmitEnabled = inputText.isNotBlank() && !debouncedAmountError && immediateValidation.isValid
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = LuckyCard,
+        containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(14.dp),
         title = {
-            Text("2D ဂဏန်းများ - အမြန်ထိုး $mode", color = LuckyTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(
+                text = if (mode == 1) stringResource(R.string.quick_bet_mode_1_title) else stringResource(R.string.quick_bet_mode_2_title),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                lineHeight = 24.sp
+            )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = inputText,
-                    onValueChange = { inputText = it },
-                    placeholder = { Text(placeholder, color = LuckyTextMuted, fontSize = 12.sp) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = LuckyHeader,
-                        unfocusedBorderColor = LuckyBorder,
-                        focusedTextColor = LuckyTextPrimary,
-                        unfocusedTextColor = LuckyTextPrimary
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    AppOutlinedTextField(
+                        value = inputText,
+                        onValueChange = { inputText = it },
+                        label = { Text(stringResource(R.string.label_quick_entry_numbers)) },
+                        isError = debouncedAmountError,
+                        singleLine = false,
+                        minLines = 1,
+                        maxLines = 4,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .soundOnInputFocus()
+                            .testTag("quick_entry_text_input")
                     )
-                )
+
+                    CompactFilledButton(
+                        text = stringResource(R.string.action_place_bet),
+                        onClick = {
+                            val check = PatternAlgorithms.validateQuickEntryAmounts(inputText, mode)
+                            if (!check.isValid) {
+                                debouncedAmountError = true
+                                return@CompactFilledButton
+                            }
+                            val result = if (mode == 1) {
+                                PatternAlgorithms.parseQuickEntryMode1(inputText, blocked)
+                            } else {
+                                PatternAlgorithms.parseQuickEntryMode2(inputText, blocked)
+                            }
+                            onAddItems(result.items, result.skippedCount, result.blockedSkipped)
+                        },
+                        enabled = isSubmitEnabled,
+                        containerColor = LuckyHeader,
+                        contentColor = Color.White,
+                        horizontalPadding = 20.dp,
+                        cornerRadius = 10.dp,
+                        modifier = Modifier.testTag("quick_entry_submit_btn")
+                    )
+                }
+
+                if (debouncedAmountError) {
+                    Text(
+                        text = invalidAmountText,
+                        color = LuckyDanger,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.testTag("quick_entry_amount_error_text")
+                    )
+                }
             }
         },
         confirmButton = {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Button(
+                CompactTextButton(
+                    text = stringResource(R.string.action_cancel),
                     onClick = onDismiss,
-                    colors = ButtonDefaults.buttonColors(containerColor = LuckyDanger, contentColor = Color.White),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("မလုပ်တော့ပါ", fontSize = 12.sp)
-                }
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    horizontalPadding = 12.dp
+                )
 
-                Button(
+                CompactTextButton(
+                    text = stringResource(R.string.action_paste),
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clipText = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
-                        if (clipText.isNotBlank()) {
-                            inputText = if (inputText.isBlank()) clipText else "$inputText\n$clipText"
+                        val clip = clipboard.primaryClip
+                        if (clip != null && clip.itemCount > 0) {
+                            val pasted = clip.getItemAt(0).text?.toString() ?: ""
+                            if (pasted.isNotBlank()) {
+                                inputText = if (inputText.isBlank()) pasted else "$inputText\n$pasted"
+                            }
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = LuckySuccess, contentColor = Color.White),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("ကူးထည့်မည်", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-
-                Button(
-                    onClick = {
-                        val result = if (mode == 1) {
-                            PatternAlgorithms.parseQuickEntryMode1(inputText, blocked, maxBet)
-                        } else {
-                            PatternAlgorithms.parseQuickEntryMode2(inputText, blocked, maxBet)
-                        }
-                        onAddItems(result.items, result.skippedCount, result.blockedSkipped)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("ထည့်မည်", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
+                    contentColor = LuckyHeader,
+                    horizontalPadding = 12.dp
+                )
             }
         }
     )
@@ -1115,7 +1334,7 @@ fun AgentPickerDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("ပိတ်မည်", color = LuckyTextSecondary)
+                Text(stringResource(R.string.action_close), color = LuckyTextSecondary)
             }
         }
     )

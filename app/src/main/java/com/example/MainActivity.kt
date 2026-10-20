@@ -33,6 +33,7 @@ import com.example.ui.MainViewModel
 import com.example.ui.Screen
 import com.example.ui.screens.*
 import com.example.ui.theme.*
+import com.example.util.SoundManager
 import kotlinx.coroutines.flow.collectLatest
 
 class MainActivity : ComponentActivity() {
@@ -41,12 +42,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SoundManager.init(applicationContext)
         enableEdgeToEdge()
 
         setContent {
             MyApplicationTheme {
                 val context = LocalContext.current
                 val currentScreen by viewModel.currentScreen.collectAsState()
+                val editingSettledRecord by viewModel.editingSettledRecord.collectAsState()
 
                 LaunchedEffect(Unit) {
                     viewModel.toastEvent.collectLatest { msg ->
@@ -58,9 +61,15 @@ class MainActivity : ComponentActivity() {
                     BackHandler {
                         viewModel.goBack()
                     }
+                } else if (currentScreen == Screen.HOME && editingSettledRecord != null) {
+                    BackHandler {
+                        viewModel.cancelEditingSettledRecord()
+                    }
                 }
 
-                val showBottomBar = currentScreen != Screen.HOME && currentScreen != Screen.NUMBER_ENTRY
+                val showBottomBar = currentScreen != Screen.HOME &&
+                    currentScreen != Screen.NUMBER_ENTRY &&
+                    currentScreen != Screen.SETTLEMENT
 
                 Scaffold(
                     modifier = Modifier
@@ -100,6 +109,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        if (isFinishing) {
+            SoundManager.release()
+        }
+        super.onDestroy()
     }
 }
 

@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.app.DatePickerDialog
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,9 +13,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -31,6 +36,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.example.R
 import com.example.data.Session
 import com.example.data.WinRecord
 import com.example.ui.MainViewModel
@@ -42,7 +49,10 @@ import java.util.Locale
 import kotlin.math.abs
 
 @Composable
-fun SettingsScreen(viewModel: MainViewModel) {
+fun SettingsScreen(
+    viewModel: MainViewModel,
+    initialDialog: String? = null
+) {
     val context = LocalContext.current
     val selectedDate by viewModel.selectedDate.collectAsState()
     val selectedSession by viewModel.selectedSession.collectAsState()
@@ -53,30 +63,37 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val settings by viewModel.settings.collectAsState()
     val currentBrakeInput by viewModel.currentBrakeInput.collectAsState()
 
-    var activeDialog by remember { mutableStateOf<String?>(null) }
+    val hasRound = sessions.isNotEmpty() && selectedSession.isNotBlank() && sessions.any { it.name == selectedSession }
+    val noRoundsText = stringResource(R.string.no_rounds_yet)
 
-    // Winning Number state
-    var winInput by remember { mutableStateOf("") }
+    var activeDialog by rememberSaveable { mutableStateOf(initialDialog) }
 
-    // Session dialog state
-    var newSessionName by remember { mutableStateOf("") }
-    var newSessionRate by remember { mutableStateOf("15") }
-    var newSessionMult by remember { mutableStateOf("80") }
-
-    // Blocked numbers dialog state
-    var blockedInput by remember { mutableStateOf("") }
-
-    // Max bet & Brake limit dialog state
-    var maxBetInput by remember(settings.maxBet) { mutableStateOf(settings.maxBet.toString()) }
-    var brakeLimitInput by remember(currentBrakeInput) { mutableStateOf(currentBrakeInput) }
-
-    // Password change dialog state
-    var currentPassInput by remember { mutableStateOf("") }
-    var newPassInput by remember { mutableStateOf("") }
-
-    val currentWin = remember(wins, selectedDate, selectedSession) {
+    val currentWin = remember(wins, selectedDate, selectedSession, hasRound) {
         viewModel.getWinningNumberForCurrentSession()
     }
+
+    // Winning Number state — starts blank so Save button is hidden until user types or edits
+    var winInput by rememberSaveable(selectedDate, selectedSession) {
+        mutableStateOf("")
+    }
+
+    // Session (Round) add/edit dialog state — all start blank with no defaults
+    var editingSessionOldName by rememberSaveable { mutableStateOf<String?>(null) }
+    var newSessionName by rememberSaveable { mutableStateOf("") }
+    var newSessionRate by rememberSaveable { mutableStateOf("") }
+    var newSessionMult by rememberSaveable { mutableStateOf("") }
+
+    // Blocked numbers dialog state
+    var blockedInput by rememberSaveable { mutableStateOf("") }
+
+    // Brake limit dialog state — starts blank so Save button is hidden until user types
+    var brakeLimitInput by rememberSaveable {
+        mutableStateOf("")
+    }
+
+    // Password change dialog state
+    var currentPassInput by rememberSaveable { mutableStateOf("") }
+    var newPassInput by rememberSaveable { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -108,13 +125,13 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 )
             }
 
-            // 1. Date & Session Selector
+            // 1. Date & Round Selector
             item {
                 SettingsRowCard(
                     icon = Icons.Default.CalendarMonth,
                     iconColor = LuckyHeader,
-                    title = "အလုပ်လုပ်မည့် ရက်စွဲနှင့် အချိန်",
-                    subtitle = "$selectedDate • $selectedSession",
+                    title = stringResource(R.string.setting_date_round_title),
+                    subtitle = "$selectedDate • ${if (hasRound) selectedSession else noRoundsText}",
                     testTag = "setting_date_session",
                     onClick = { activeDialog = "DATE_SESSION" }
                 )
@@ -122,28 +139,52 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
             // 2. Winning Numbers (ထွက်ဂဏန်းများ / ပေါက်သီး)
             item {
-                SettingsRowCard(
-                    icon = Icons.Default.EmojiEvents,
-                    iconColor = LuckyWarning,
-                    title = "ထွက်ဂဏန်းများ (ပေါက်သီး)",
-                    subtitle = if (currentWin.isNotEmpty()) "လက်ရှိပေါက်သီး: $currentWin" else "ပေါက်သီး ထည့်သွင်းရန်နှင့် မှတ်တမ်းကြည့်ရန်",
-                    testTag = "setting_winning_numbers",
-                    onClick = {
-                        winInput = currentWin
-                        activeDialog = "WINNING_NUMBERS"
+                val hasSavedWin = hasRound && currentWin.length == 2 && currentWin.all { it.isDigit() }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingsRowCard(
+                        icon = Icons.Default.EmojiEvents,
+                        iconColor = LuckyWarning,
+                        title = "ထွက်ဂဏန်းများ (ပေါက်သီး)",
+                        subtitle = when {
+                            !hasRound -> stringResource(R.string.add_round_first)
+                            hasSavedWin -> "လက်ရှိပေါက်သီး: ${formatWinningNumberTwoDigits(currentWin)}"
+                            else -> "ပေါက်သီး ထည့်သွင်းရန်နှင့် မှတ်တမ်းကြည့်ရန်"
+                        },
+                        testTag = "setting_winning_numbers",
+                        onClick = {
+                            winInput = ""
+                            activeDialog = "WINNING_NUMBERS"
+                        }
+                    )
+                    AnimatedVisibility(visible = hasSavedWin) {
+                        CompactPrimaryButton(
+                            text = stringResource(R.string.action_view_winning_number),
+                            onClick = {
+                                viewModel.openNumbersFromWinningNumber()
+                            },
+                            horizontalPadding = 16.dp,
+                            cornerRadius = 10.dp,
+                            modifier = Modifier.testTag("settings_card_view_winning_number_btn")
+                        )
                     }
-                )
+                }
             }
 
-            // 3. Sessions (အကြိမ်ရေ / ပွဲစဉ်များ)
+            // 3. Rounds (အကြိမ်ရေ)
             item {
                 SettingsRowCard(
                     icon = Icons.Default.AccessTime,
                     iconColor = LuckyHeader,
-                    title = "အကြိမ်ရေ (အချိန်) များ စီမံရန်",
-                    subtitle = sessions.joinToString(", ") { it.name }.ifEmpty { "12.AM, 4.PM" },
+                    title = stringResource(R.string.manage_round_times_title),
+                    subtitle = sessions.joinToString(", ") { it.name }.ifEmpty { noRoundsText },
                     testTag = "setting_sessions",
-                    onClick = { activeDialog = "SESSIONS" }
+                    onClick = {
+                        editingSessionOldName = null
+                        newSessionName = ""
+                        newSessionRate = ""
+                        newSessionMult = ""
+                        activeDialog = "SESSIONS"
+                    }
                 )
             }
 
@@ -159,26 +200,90 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 )
             }
 
-            // 5. Max Bet & Brake Limit
+            // 5. Brake Limit
             item {
                 SettingsRowCard(
                     icon = Icons.Default.Speed,
                     iconColor = LuckySuccess,
-                    title = "အများဆုံးထိုးကြေး နှင့် ဘရိတ် သတ်မှတ်ချက်",
-                    subtitle = "အများဆုံး: ${fmt(settings.maxBet)} | ဘရိတ်: ${fmt(settings.brakeLimit)}",
+                    title = stringResource(R.string.setting_brake_limit_title),
+                    subtitle = "${stringResource(R.string.label_brake)}: ${fmt(settings.brakeLimit)}",
                     testTag = "setting_limits",
                     onClick = {
-                        maxBetInput = settings.maxBet.toString()
-                        brakeLimitInput = settings.brakeLimit.toString()
+                        brakeLimitInput = ""
                         activeDialog = "LIMITS"
                     }
                 )
             }
 
+            // 6. Sound Effects Toggle (အသံ)
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("setting_sound_card"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = LuckyCard),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .background(LuckyHeader.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (settings.soundEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+                                contentDescription = stringResource(R.string.setting_sound_title),
+                                tint = LuckyHeader,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.setting_sound_title),
+                                color = LuckyTextPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (settings.soundEnabled) {
+                                    stringResource(R.string.setting_sound_enabled_subtitle)
+                                } else {
+                                    stringResource(R.string.setting_sound_disabled_subtitle)
+                                },
+                                color = LuckyTextMuted,
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        Switch(
+                            checked = settings.soundEnabled,
+                            onCheckedChange = { enabled ->
+                                viewModel.setSoundEnabled(enabled)
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = LuckyHeader
+                            ),
+                            modifier = Modifier.testTag("sound_switch")
+                        )
+                    }
+                }
+            }
+
             item {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "စာရင်းချုပ်နှင့် လုံခြုံရေး",
+                    text = "လုံခြုံရေးနှင့် ဒေတာ",
                     color = LuckyHeader,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
@@ -186,31 +291,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 )
             }
 
-            // 6. Ledger Records (စာရင်းချုပ် မှတ်တမ်းများ)
-            item {
-                SettingsRowCard(
-                    icon = Icons.Default.Assessment,
-                    iconColor = LuckyHeader,
-                    title = "စာရင်းချုပ် မှတ်တမ်းများ (${settled.size})",
-                    subtitle = "အကြိမ်ရေအလိုက် အမြတ်/အရှုံး နှင့် မှတ်တမ်းများ",
-                    testTag = "setting_ledger_records",
-                    onClick = { activeDialog = "LEDGER_RECORDS" }
-                )
-            }
-
-            // 7. Per-agent 2D Settlement (2D စာရင်းချုပ်)
-            item {
-                SettingsRowCard(
-                    icon = Icons.Default.Calculate,
-                    iconColor = LuckyHeader,
-                    title = "ကော်မရှင်အလိုက် 2D စာရင်းချုပ်",
-                    subtitle = "ထိုးသူတစ်ဦးချင်းစီအလိုက် အမြတ်/အရှုံး စာရင်း",
-                    testTag = "setting_agent_settlement",
-                    onClick = { viewModel.navigateTo(Screen.AGENT_SETTLEMENT) }
-                )
-            }
-
-            // 8. Change Password
+            // 9. Change Password
             item {
                 SettingsRowCard(
                     icon = Icons.Default.Lock,
@@ -226,7 +307,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 )
             }
 
-            // 9. Reset All Data
+            // 10. Reset All Data
             item {
                 SettingsRowCard(
                     icon = Icons.Default.DeleteForever,
@@ -240,7 +321,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
         }
     }
 
-    // Dialog 1: Date & Session
+    // Dialog 1: Date & Round
     if (activeDialog == "DATE_SESSION") {
         Dialog(onDismissRequest = { activeDialog = null }) {
             Card(
@@ -255,7 +336,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = "ရက်စွဲနှင့် အချိန် ရွေးချယ်ရန်",
+                        text = stringResource(R.string.dialog_date_round_title),
                         color = LuckyTextPrimary,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
@@ -283,33 +364,45 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         Text("ရက်စွဲ: $selectedDate", color = LuckyTextPrimary, fontWeight = FontWeight.Bold)
                     }
 
-                    Text("အချိန် (ပွဲစဉ်) ရွေးချယ်ပါ", color = LuckyTextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = stringResource(R.string.dialog_select_round_subtitle),
+                        color = LuckyTextMuted,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
 
-                    sessions.forEach { s ->
-                        val isSelected = s.name == selectedSession
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) LuckyHeader.copy(alpha = 0.12f) else LuckyBg)
-                                .border(
-                                    width = 1.dp,
-                                    color = if (isSelected) LuckyHeader else LuckyBorder,
-                                    shape = RoundedCornerShape(8.dp)
+                    if (sessions.isEmpty()) {
+                        EmptyStateView(
+                            message = noRoundsText,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    } else {
+                        sessions.forEach { s ->
+                            val isSelected = s.name == selectedSession
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) LuckyHeader.copy(alpha = 0.12f) else LuckyBg)
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isSelected) LuckyHeader else LuckyBorder,
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    .clickable { viewModel.setSession(s.name) }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = s.name,
+                                    color = if (isSelected) LuckyHeader else LuckyTextPrimary,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
-                                .clickable { viewModel.setSession(s.name) }
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = s.name,
-                                color = if (isSelected) LuckyHeader else LuckyTextPrimary,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            if (isSelected) {
-                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = LuckyHeader, modifier = Modifier.size(18.dp))
+                                if (isSelected) {
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = LuckyHeader, modifier = Modifier.size(18.dp))
+                                }
                             }
                         }
                     }
@@ -323,7 +416,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                             colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("ပိတ်မည်", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.action_close), color = Color.White, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -333,99 +426,128 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
     // Dialog 2: Winning Numbers (ထွက်ဂဏန်းများ)
     if (activeDialog == "WINNING_NUMBERS") {
-        Dialog(onDismissRequest = { activeDialog = null }) {
+        Dialog(
+            onDismissRequest = { activeDialog = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            val showWinSaveBtn = hasRound && winInput.isNotBlank()
+            val hasSavedWinningNumber = hasRound && currentWin.length == 2 && currentWin.all { it.isDigit() }
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = LuckyCard)
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp),
+                        .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
                         text = "ထွက်ဂဏန်း (ပေါက်သီး) သတ်မှတ်ရန်",
                         color = LuckyTextPrimary,
                         fontSize = 16.sp,
+                        lineHeight = 24.sp,
                         fontWeight = FontWeight.Bold
                     )
+
+                    RoundRequiredHelperBanner(visible = !hasRound)
 
                     Text(
-                        text = "$selectedDate • $selectedSession",
+                        text = "$selectedDate • ${if (hasRound) selectedSession else noRoundsText}",
                         color = LuckyHeader,
                         fontSize = 13.sp,
+                        lineHeight = 20.sp,
                         fontWeight = FontWeight.Bold
-                    )
-
-                    OutlinedTextField(
-                        value = winInput,
-                        onValueChange = { winInput = it.filter { c -> c.isDigit() }.take(2) },
-                        label = { Text("ပေါက်သီး ဂဏန်း (၀၀ မှ ၉၉)") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        textStyle = TextStyle(
-                            color = LuckyDanger,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.Monospace
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("settings_winning_number_input"),
-                        shape = RoundedCornerShape(8.dp)
                     )
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        OutlinedButton(
-                            onClick = { activeDialog = null },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("ပိတ်မည်", color = LuckyTextSecondary, fontWeight = FontWeight.Bold)
-                        }
-
-                        Button(
-                            onClick = {
-                                if (winInput.length == 2) {
-                                    viewModel.setWinningNumber(winInput)
-                                    activeDialog = null
-                                } else {
-                                    viewModel.showToast("ဂဏန်း ၂ လုံး အပြည့်ထည့်ပါ")
+                        AppOutlinedTextField(
+                            value = winInput,
+                            onValueChange = { raw ->
+                                val filtered = raw.filter { c -> c.isDigit() }.take(2)
+                                winInput = filtered
+                                if (filtered.isEmpty() && currentWin.isNotEmpty()) {
+                                    viewModel.clearWinningNumberForCurrentSession()
                                 }
                             },
+                            enabled = hasRound,
+                            label = { Text(stringResource(R.string.label_winning_number)) },
+                            trailingIcon = {
+                                if (winInput.isNotEmpty() || currentWin.isNotEmpty()) {
+                                    IconButton(
+                                        onClick = {
+                                            winInput = ""
+                                            viewModel.clearWinningNumberForCurrentSession()
+                                        },
+                                        modifier = Modifier.testTag("clear_winning_number_btn")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Clear,
+                                            contentDescription = stringResource(R.string.action_clear),
+                                            tint = LuckyTextSecondary
+                                        )
+                                    }
+                                }
+                            },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            textStyle = TextStyle(
+                                color = Color.Black,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace
+                            ),
                             modifier = Modifier
                                 .weight(1f)
-                                .testTag("settings_save_winning_btn"),
-                            colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader),
+                                .soundOnInputFocus()
+                                .testTag("settings_winning_number_input"),
                             shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("သိမ်းမည်", color = Color.White, fontWeight = FontWeight.Bold)
+                        )
+
+                        AnimatedVisibility(visible = showWinSaveBtn) {
+                            CompactPrimaryButton(
+                                text = stringResource(R.string.action_save),
+                                onClick = {
+                                    val cleanWin = winInput.trim()
+                                    if (cleanWin.length == 2) {
+                                        viewModel.setWinningNumber(cleanWin)
+                                        winInput = ""
+                                    } else if (cleanWin.isNotEmpty()) {
+                                        viewModel.showToast("ဂဏန်း ၂ လုံး အပြည့်ထည့်ပါ")
+                                    }
+                                },
+                                enabled = hasRound,
+                                horizontalPadding = 16.dp,
+                                cornerRadius = 10.dp,
+                                modifier = Modifier.testTag("settings_save_winning_btn")
+                            )
                         }
                     }
 
-                    TextButton(
-                        onClick = {
-                            if (winInput.length == 2) {
-                                viewModel.setWinningNumber(winInput)
-                            }
-                            activeDialog = null
-                            viewModel.navigateTo(Screen.AGENT_SETTLEMENT)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.Calculate, contentDescription = null, tint = LuckyHeader, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("2D စာရင်းချုပ် သို့ သွားမည်", color = LuckyHeader, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    // Compact "ထွက်ဂဏန်း ကြည့်ရန်" button right under the winning number input
+                    AnimatedVisibility(visible = hasSavedWinningNumber) {
+                        CompactPrimaryButton(
+                            text = stringResource(R.string.action_view_winning_number),
+                            onClick = {
+                                activeDialog = null
+                                viewModel.openNumbersFromWinningNumber()
+                            },
+                            horizontalPadding = 16.dp,
+                            cornerRadius = 10.dp,
+                            modifier = Modifier.testTag("view_winning_number_btn")
+                        )
                     }
 
                     if (wins.isNotEmpty()) {
                         HorizontalDivider(color = LuckyBorder)
-                        Text("သိမ်းဆည်းထားသော ပေါက်သီးများ", color = LuckyTextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("သိမ်းဆည်းထားသော ပေါက်သီးများ", color = LuckyTextMuted, fontSize = 12.sp, lineHeight = 18.sp, fontWeight = FontWeight.Bold)
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -442,7 +564,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("${w.date} • ${w.session}", color = LuckyTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("${w.date} • ${w.session}", color = LuckyTextPrimary, fontSize = 12.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold)
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
                                             text = w.n,
@@ -455,64 +577,141 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                             onClick = { viewModel.deleteWinRecord(w) },
                                             modifier = Modifier.size(28.dp)
                                         ) {
-                                            Icon(Icons.Default.Delete, contentDescription = "ဖျက်မည်", tint = LuckyDanger, modifier = Modifier.size(16.dp))
+                                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.action_delete), tint = LuckyDanger, modifier = Modifier.size(16.dp))
                                         }
                                     }
                                 }
                             }
                         }
                     }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CompactTextButton(
+                            text = stringResource(R.string.action_close),
+                            onClick = { activeDialog = null },
+                            modifier = Modifier.testTag("settings_close_winning_btn")
+                        )
+                    }
                 }
             }
         }
     }
 
-    // Dialog 3: Sessions Management
+    // Dialog 3: Sessions (Rounds) Management — "အကြိမ်ရေ"
     if (activeDialog == "SESSIONS") {
-        Dialog(onDismissRequest = { activeDialog = null }) {
+        Dialog(
+            onDismissRequest = { activeDialog = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            val showSessionSaveBtn = MainViewModel.shouldShowRoundSaveButton(newSessionName)
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = LuckyCard)
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp),
+                        .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = "အကြိမ်ရေ (အချိန်) များ စီမံရန်",
+                        text = stringResource(R.string.manage_round_times_title),
                         color = LuckyTextPrimary,
                         fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        lineHeight = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.testTag("manage_rounds_title")
                     )
 
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 200.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        sessions.forEach { s: Session ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(LuckyBg, RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(s.name, color = LuckyTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                    Text("ကော်မရှင် ${fmt(s.rate)}% • အဆ ${fmt(s.mult)}", color = LuckyTextMuted, fontSize = 11.sp)
-                                }
-                                IconButton(
-                                    onClick = { viewModel.deleteSession(s.name) },
-                                    modifier = Modifier.size(28.dp)
+                    if (sessions.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(LuckyBg, RoundedCornerShape(8.dp))
+                                .padding(vertical = 16.dp, horizontal = 12.dp)
+                                .testTag("sessions_empty_state"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = noRoundsText,
+                                color = LuckyTextMuted,
+                                fontSize = 14.sp,
+                                lineHeight = 21.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 180.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            sessions.forEach { s: Session ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(LuckyBg, RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "ဖျက်မည်", tint = LuckyDanger, modifier = Modifier.size(18.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(s.name, color = LuckyTextPrimary, fontSize = 14.sp, lineHeight = 21.sp, fontWeight = FontWeight.Bold)
+                                        Text("ကော်မရှင် ${fmt(s.rate)}% • အဆ ${fmt(s.mult)}", color = LuckyTextMuted, fontSize = 11.sp, lineHeight = 17.sp)
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(
+                                            onClick = {
+                                                viewModel.onEditActionStarted()
+                                                editingSessionOldName = s.name
+                                                newSessionName = s.name
+                                                newSessionRate = if (s.rate > 0.0) fmt(s.rate) else ""
+                                                newSessionMult = if (s.mult > 0.0) fmt(s.mult) else ""
+                                            },
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .testTag("edit_session_${s.name}")
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Edit,
+                                                contentDescription = stringResource(R.string.action_edit),
+                                                tint = LuckyHeader,
+                                                modifier = Modifier.size(17.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                if (editingSessionOldName == s.name) {
+                                                    editingSessionOldName = null
+                                                    newSessionName = ""
+                                                    newSessionRate = ""
+                                                    newSessionMult = ""
+                                                }
+                                                viewModel.deleteSession(s.name)
+                                            },
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .testTag("delete_session_${s.name}")
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = stringResource(R.string.action_delete),
+                                                tint = LuckyDanger,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -520,67 +719,108 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
                     HorizontalDivider(color = LuckyBorder)
 
-                    OutlinedTextField(
-                        value = newSessionName,
-                        onValueChange = { newSessionName = it },
-                        label = { Text("အချိန်အမည် (ဥပမာ - 12.AM သို့မဟုတ် 4.PM)") },
-                        singleLine = true,
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp)
-                    )
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AppOutlinedTextField(
+                            value = newSessionName,
+                            onValueChange = {
+                                newSessionName = it
+                                if (it.isBlank()) {
+                                    editingSessionOldName = null
+                                }
+                            },
+                            label = { Text(stringResource(R.string.round_label)) },
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .soundOnInputFocus()
+                                .testTag("session_name_input"),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+
+                        AnimatedVisibility(visible = showSessionSaveBtn) {
+                            CompactPrimaryButton(
+                                text = stringResource(R.string.action_save),
+                                onClick = {
+                                    val cleanName = newSessionName.trim()
+                                    if (cleanName.isNotEmpty()) {
+                                        val rateVal = MainViewModel.parseDoubleOrZero(newSessionRate)
+                                        val multVal = MainViewModel.parseDoubleOrZero(newSessionMult)
+                                        val oldName = editingSessionOldName
+                                        val saved = if (oldName != null) {
+                                            viewModel.updateSession(
+                                                oldName = oldName,
+                                                updatedSession = Session(name = cleanName, rate = rateVal, mult = multVal)
+                                            )
+                                        } else {
+                                            viewModel.addSession(
+                                                name = cleanName,
+                                                rate = rateVal,
+                                                mult = multVal
+                                            )
+                                        }
+                                        if (saved) {
+                                            editingSessionOldName = null
+                                            newSessionName = ""
+                                            newSessionRate = ""
+                                            newSessionMult = ""
+                                        }
+                                    }
+                                },
+                                horizontalPadding = 16.dp,
+                                cornerRadius = 10.dp,
+                                modifier = Modifier.testTag("session_save_btn")
+                            )
+                        }
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        OutlinedTextField(
+                        AppOutlinedTextField(
                             value = newSessionRate,
                             onValueChange = { newSessionRate = it },
-                            label = { Text("ကော်မရှင် (%)") },
+                            label = { Text(stringResource(R.string.label_commission_percent)) },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .soundOnInputFocus()
+                                .testTag("session_rate_input"),
                             shape = RoundedCornerShape(8.dp)
                         )
-                        OutlinedTextField(
+                        AppOutlinedTextField(
                             value = newSessionMult,
                             onValueChange = { newSessionMult = it },
-                            label = { Text("အဆ") },
+                            label = { Text(stringResource(R.string.label_multiplier)) },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .soundOnInputFocus()
+                                .testTag("session_mult_input"),
                             shape = RoundedCornerShape(8.dp)
                         )
                     }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        OutlinedButton(
-                            onClick = { activeDialog = null },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("ပိတ်မည်", color = LuckyTextSecondary, fontWeight = FontWeight.Bold)
-                        }
-                        Button(
+                        CompactTextButton(
+                            text = stringResource(R.string.action_close),
                             onClick = {
-                                if (newSessionName.isNotBlank()) {
-                                    viewModel.addSession(
-                                        name = newSessionName.trim(),
-                                        rate = newSessionRate.toDoubleOrNull() ?: 15.0,
-                                        mult = newSessionMult.toDoubleOrNull() ?: 80.0
-                                    )
-                                    newSessionName = ""
-                                }
+                                editingSessionOldName = null
+                                activeDialog = null
                             },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("အသစ်ထည့်မည်", color = Color.White, fontWeight = FontWeight.Bold)
-                        }
+                            modifier = Modifier.testTag("session_close_btn")
+                        )
                     }
                 }
             }
@@ -589,22 +829,29 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
     // Dialog 4: Blocked Numbers
     if (activeDialog == "BLOCKED") {
-        Dialog(onDismissRequest = { activeDialog = null }) {
+        Dialog(
+            onDismissRequest = { activeDialog = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            val showBlockedSaveBtn = blockedInput.isNotBlank()
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = LuckyCard)
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp),
+                        .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
                         text = "မရဂဏန်းများ သတ်မှတ်ရန်",
                         color = LuckyTextPrimary,
                         fontSize = 16.sp,
+                        lineHeight = 24.sp,
                         fontWeight = FontWeight.Bold
                     )
 
@@ -613,33 +860,40 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        OutlinedTextField(
+                        AppOutlinedTextField(
                             value = blockedInput,
                             onValueChange = { blockedInput = it },
-                            label = { Text("ဂဏန်းထည့်ပါ (ဥပမာ - 12, 34)") },
+                            label = { Text(stringResource(R.string.label_blocked_number)) },
                             singleLine = true,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .soundOnInputFocus()
+                                .testTag("blocked_number_input"),
                             shape = RoundedCornerShape(8.dp)
                         )
-                        Button(
-                            onClick = {
-                                val nums = blockedInput.split(",", " ", ".")
-                                    .map { it.trim() }
-                                    .filter { it.length == 2 && it.all { c -> c.isDigit() } }
-                                if (nums.isNotEmpty()) {
-                                    viewModel.addBlockedNumbers(nums)
-                                    blockedInput = ""
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("ထည့်မည်", color = Color.White, fontWeight = FontWeight.Bold)
+                        AnimatedVisibility(visible = showBlockedSaveBtn) {
+                            CompactPrimaryButton(
+                                text = stringResource(R.string.action_save),
+                                onClick = {
+                                    val nums = blockedInput.split(",", " ", ".")
+                                        .map { it.trim() }
+                                        .filter { it.length == 2 && it.all { c -> c.isDigit() } }
+                                    if (nums.isNotEmpty()) {
+                                        viewModel.addBlockedNumbers(nums)
+                                        blockedInput = ""
+                                    } else {
+                                        viewModel.showToast("ဂဏန်း ၂ လုံး အပြည့်ထည့်ပါ")
+                                    }
+                                },
+                                horizontalPadding = 16.dp,
+                                cornerRadius = 10.dp,
+                                modifier = Modifier.testTag("blocked_save_btn")
+                            )
                         }
                     }
 
                     if (blocked.isEmpty()) {
-                        Text("ပိတ်ထားသော ဂဏန်း မရှိသေးပါ", color = LuckyTextMuted, fontSize = 12.sp)
+                        Text("ပိတ်ထားသော ဂဏန်း မရှိသေးပါ", color = LuckyTextMuted, fontSize = 12.sp, lineHeight = 18.sp)
                     } else {
                         Column(
                             modifier = Modifier
@@ -668,7 +922,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                         onClick = { viewModel.removeBlockedNumber(num) },
                                         modifier = Modifier.size(28.dp)
                                     ) {
-                                        Icon(Icons.Default.Delete, contentDescription = "ဖျက်မည်", tint = LuckyDanger, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.action_delete), tint = LuckyDanger, modifier = Modifier.size(16.dp))
                                     }
                                 }
                             }
@@ -679,92 +933,27 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End
                     ) {
-                        TextButton(onClick = { activeDialog = null }) {
-                            Text("ပိတ်မည်", color = LuckyHeader, fontWeight = FontWeight.Bold)
-                        }
+                        CompactTextButton(
+                            text = stringResource(R.string.action_close),
+                            onClick = { activeDialog = null }
+                        )
                     }
                 }
             }
         }
     }
 
-    // Dialog 5: Limits (Max Bet & Brake Limit)
+    // Dialog 5: Brake Limit
     if (activeDialog == "LIMITS") {
-        Dialog(onDismissRequest = { activeDialog = null }) {
+        Dialog(
+            onDismissRequest = { activeDialog = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            val showBrakeLimitSave = brakeLimitInput.isNotBlank()
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = LuckyCard)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "အများဆုံးထိုးကြေး နှင့် ဘရိတ်",
-                        color = LuckyTextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    OutlinedTextField(
-                        value = maxBetInput,
-                        onValueChange = { maxBetInput = it.filter { c -> c.isDigit() } },
-                        label = { Text("တစ်ကွက် အများဆုံးထိုးကြေး") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp)
-                    )
-
-                    OutlinedTextField(
-                        value = brakeLimitInput,
-                        onValueChange = { brakeLimitInput = it.filter { c -> c.isDigit() } },
-                        label = { Text("ပုံသေ ဘရိတ် ပမာဏ") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp)
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = { activeDialog = null },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("မလုပ်တော့ပါ", color = LuckyTextSecondary, fontWeight = FontWeight.Bold)
-                        }
-                        Button(
-                            onClick = {
-                                val maxB = maxBetInput.toLongOrNull() ?: settings.maxBet
-                                viewModel.updateMaxBet(maxB)
-                                viewModel.updateBrakeLimit(brakeLimitInput)
-                                viewModel.saveBrakeLimit()
-                                activeDialog = null
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("သိမ်းမည်", color = Color.White, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Dialog 6: Ledger Records (စာရင်းချုပ် မှတ်တမ်းများ) with per-round and overall breakdown
-    if (activeDialog == "LEDGER_RECORDS") {
-        Dialog(onDismissRequest = { activeDialog = null }) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = LuckyCard)
             ) {
@@ -772,131 +961,48 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    Text(
+                        text = stringResource(R.string.setting_brake_limit_title),
+                        color = LuckyTextPrimary,
+                        fontSize = 16.sp,
+                        lineHeight = 24.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "စာရင်းချုပ် မှတ်တမ်းများ (${settled.size})",
-                            color = LuckyTextPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
+                        AppOutlinedTextField(
+                            value = brakeLimitInput,
+                            onValueChange = { brakeLimitInput = it.filter { c -> c.isDigit() } },
+                            label = { Text(stringResource(R.string.label_default_brake)) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier
+                                .weight(1f)
+                                .soundOnInputFocus()
+                                .testTag("settings_brake_limit_input"),
+                            shape = RoundedCornerShape(8.dp)
                         )
-                        if (settled.isNotEmpty()) {
-                            TextButton(onClick = { viewModel.clearSettledLedger() }) {
-                                Text("ရှင်းမည်", color = LuckyDanger, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
 
-                    if (settled.isEmpty()) {
-                        EmptyStateView(message = "သိမ်းဆည်းထားသော စာရင်းချုပ် မှတ်တမ်း မရှိသေးပါ")
-                    } else {
-                        val grandBet = settled.sumOf { it.totalRetained }
-                        val grandComm = settled.sumOf { it.commission }
-                        val grandPayout = settled.sumOf { it.payout }
-                        val grandNet = settled.sumOf { it.profitLoss }
-                        val isProfit = grandNet >= 0
-                        val grandColor = if (isProfit) LuckySuccess else LuckyDanger
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(grandColor.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
-                                .padding(10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "စုစုပေါင်း (${if (isProfit) "အမြတ်" else "အရှုံး"})",
-                                    color = grandColor,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                                Text(
-                                    text = "ရောင်း ${fmt(grandBet)} | ကော် ${fmt(grandComm)} | လျော် ${fmt(grandPayout)}",
-                                    color = LuckyTextSecondary,
-                                    fontSize = 10.sp
-                                )
-                            }
-                            Text(
-                                text = "${if (isProfit) "+" else "-"}${fmt(abs(grandNet))}",
-                                color = grandColor,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontFamily = FontFamily.Monospace
+                        AnimatedVisibility(visible = showBrakeLimitSave) {
+                            CompactPrimaryButton(
+                                text = stringResource(R.string.action_save),
+                                onClick = {
+                                    if (brakeLimitInput.isNotBlank()) {
+                                        viewModel.updateBrakeLimit(brakeLimitInput)
+                                        viewModel.saveBrakeLimit()
+                                        brakeLimitInput = ""
+                                    }
+                                },
+                                horizontalPadding = 16.dp,
+                                cornerRadius = 10.dp,
+                                modifier = Modifier.testTag("settings_save_limits_btn")
                             )
-                        }
-
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 260.dp)
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            settled.forEach { rec ->
-                                val rProfit = rec.profitLoss >= 0
-                                val rColor = if (rProfit) LuckySuccess else LuckyDanger
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(LuckyBg, RoundedCornerShape(8.dp))
-                                        .border(1.dp, LuckyBorder, RoundedCornerShape(8.dp))
-                                        .padding(10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "${rec.date} • ${rec.session} [ပေါက်သီး: ${rec.winningNumber.ifEmpty { "-" }}]",
-                                            color = LuckyTextPrimary,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        IconButton(
-                                            onClick = { viewModel.deleteSettledRecord(rec.id) },
-                                            modifier = Modifier.size(24.dp)
-                                        ) {
-                                            Icon(Icons.Default.Delete, contentDescription = "ဖျက်မည်", tint = LuckyDanger, modifier = Modifier.size(16.dp))
-                                        }
-                                    }
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text("ရောင်း: ${fmt(rec.totalRetained)}", color = LuckyTextPrimary, fontSize = 11.sp)
-                                        Text("ကော်: ${fmt(rec.commission)}", color = LuckyTextSecondary, fontSize = 11.sp)
-                                        Text("လျော်: ${fmt(rec.payout)}", color = LuckyDanger, fontSize = 11.sp)
-                                    }
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = if (rProfit) "အမြတ်" else "အရှုံး",
-                                            color = rColor,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = "${if (rProfit) "+" else "-"}${fmt(abs(rec.profitLoss))}",
-                                            color = rColor,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontFamily = FontFamily.Monospace
-                                        )
-                                    }
-                                }
-                            }
                         }
                     }
 
@@ -904,21 +1010,21 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End
                     ) {
-                        Button(
-                            onClick = { activeDialog = null },
-                            colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("ပိတ်မည်", color = Color.White, fontWeight = FontWeight.Bold)
-                        }
+                        CompactTextButton(
+                            text = stringResource(R.string.action_close),
+                            onClick = { activeDialog = null }
+                        )
                     }
                 }
             }
         }
     }
 
+
+
     // Dialog 7: Password Change
     if (activeDialog == "PASSWORD") {
+        val showPasswordSaveBtn = currentPassInput.isNotBlank() && newPassInput.isNotBlank()
         Dialog(onDismissRequest = { activeDialog = null }) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -938,50 +1044,58 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         fontWeight = FontWeight.Bold
                     )
 
-                    OutlinedTextField(
+                    AppOutlinedTextField(
                         value = currentPassInput,
                         onValueChange = { currentPassInput = it },
-                        label = { Text("လက်ရှိ စကားဝှက်") },
+                        label = { Text(stringResource(R.string.label_current_password)) },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .soundOnInputFocus(),
                         shape = RoundedCornerShape(8.dp)
                     )
 
-                    OutlinedTextField(
+                    AppOutlinedTextField(
                         value = newPassInput,
                         onValueChange = { newPassInput = it },
-                        label = { Text("စကားဝှက် အသစ်") },
+                        label = { Text(stringResource(R.string.label_new_password)) },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .soundOnInputFocus(),
                         shape = RoundedCornerShape(8.dp)
                     )
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         OutlinedButton(
                             onClick = { activeDialog = null },
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(10.dp)
                         ) {
-                            Text("မလုပ်တော့ပါ", color = LuckyTextSecondary, fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.action_cancel), color = LuckyTextSecondary, fontWeight = FontWeight.Bold)
                         }
-                        Button(
-                            onClick = {
-                                if (viewModel.changePassword(currentPassInput, newPassInput)) {
-                                    activeDialog = null
-                                }
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("သိမ်းမည်", color = Color.White, fontWeight = FontWeight.Bold)
+                        AnimatedVisibility(visible = showPasswordSaveBtn) {
+                            CompactPrimaryButton(
+                                text = stringResource(R.string.action_save),
+                                onClick = {
+                                    if (viewModel.changePassword(currentPassInput, newPassInput)) {
+                                        currentPassInput = ""
+                                        newPassInput = ""
+                                        activeDialog = null
+                                    }
+                                },
+                                horizontalPadding = 16.dp,
+                                cornerRadius = 10.dp,
+                                modifier = Modifier.testTag("password_save_btn")
+                            )
                         }
                     }
                 }
@@ -992,8 +1106,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
     // Dialog 8: Reset All Data
     if (activeDialog == "RESET_ALL") {
         DeleteConfirmDialog(
-            title = "အချက်အလက်အားလုံး ရှင်းလင်းရန်",
-            message = "အက်ပ်အတွင်းရှိ ဘောင်ချာများ၊ ကော်မရှင်များ၊ ပေါက်သီးများနှင့် စာရင်းချုပ်မှတ်တမ်းအားလုံးကို အပြီးအပိုင် ဖျက်ရန် သေချာပါသလား?",
+            title = "ဖျက်မည်လား?",
+            message = "အက်ပ်အတွင်းရှိ ဘောင်ချာများ၊ ကော်မရှင်များ၊ ပေါက်သီးများနှင့် စာရင်းချုပ်မှတ်တမ်းအားလုံးကို အပြီးအပိုင် ဖျက်မည်လား?",
             onDismiss = { activeDialog = null },
             onConfirm = {
                 viewModel.resetAllData()
@@ -1047,6 +1161,7 @@ private fun SettingsRowCard(
                     text = title,
                     color = LuckyTextPrimary,
                     fontSize = 14.sp,
+                    lineHeight = 21.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -1056,6 +1171,7 @@ private fun SettingsRowCard(
                     text = subtitle,
                     color = LuckyTextMuted,
                     fontSize = 12.sp,
+                    lineHeight = 18.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

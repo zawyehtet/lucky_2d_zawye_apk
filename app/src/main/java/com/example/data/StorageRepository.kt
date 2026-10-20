@@ -13,26 +13,41 @@ class StorageRepository(context: Context) {
     companion object {
         private const val KEY_AGENTS = "lucky2d_agents"
         private const val KEY_SESSIONS = "lucky2d_sessions"
+        private const val KEY_SESSIONS_MIGRATED_V1 = "lucky2d_sessions_migrated_v1"
+        private const val KEY_SETTINGS_MIGRATED_V1 = "lucky2d_settings_migrated_v1"
         private const val KEY_VOUCHERS = "lucky2d_vouchers"
         private const val KEY_LAYOFFS = "lucky2d_layoffs"
         private const val KEY_BLOCKED = "lucky2d_blocked"
         private const val KEY_WINS = "lucky2d_wins"
         private const val KEY_SETTLED = "lucky2d_settled"
         private const val KEY_SETTINGS = "lucky2d_settings"
+
+        private val DEFAULT_ROUND_NAMES_12AM = setOf("12.AM", "12AM")
+        private val DEFAULT_ROUND_NAMES_4PM = setOf("4.PM", "4PM")
     }
 
-    // Default Sessions
+    private fun isUntouchedDefaultSessions(list: List<Session>): Boolean {
+        if (list.size != 2) return false
+        val first = list[0]
+        val second = list[1]
+        return first.name in DEFAULT_ROUND_NAMES_12AM &&
+            first.rate == 15.0 &&
+            first.mult == 80.0 &&
+            second.name in DEFAULT_ROUND_NAMES_4PM &&
+            second.rate == 15.0 &&
+            second.mult == 80.0
+    }
+
+    // Sessions (Rounds) - starts empty on fresh install; migrates untouched pre-seeded defaults once
     fun loadSessions(): List<Session> {
         return try {
+            val migrated = prefs.getBoolean(KEY_SESSIONS_MIGRATED_V1, false)
             val jsonStr = prefs.getString(KEY_SESSIONS, null)
-            if (jsonStr == null) {
-                val defaults = listOf(
-                    Session(name = "12.AM", rate = 15.0, mult = 80.0),
-                    Session(name = "4.PM", rate = 15.0, mult = 80.0)
-                )
-                saveSessions(defaults)
-                defaults
-            } else if (jsonStr.isEmpty()) {
+
+            if (jsonStr.isNullOrEmpty()) {
+                if (!migrated) {
+                    prefs.edit().putBoolean(KEY_SESSIONS_MIGRATED_V1, true).apply()
+                }
                 emptyList()
             } else {
                 val arr = JSONArray(jsonStr)
@@ -42,28 +57,24 @@ class StorageRepository(context: Context) {
                     list.add(
                         Session(
                             name = obj.getString("name"),
-                            rate = obj.optDouble("rate", 15.0),
-                            mult = obj.optDouble("mult", 80.0)
+                            rate = obj.optDouble("rate", 0.0),
+                            mult = obj.optDouble("mult", 0.0)
                         )
                     )
                 }
-                if (list.isEmpty()) {
-                    val defaults = listOf(
-                        Session(name = "12.AM", rate = 15.0, mult = 80.0),
-                        Session(name = "4.PM", rate = 15.0, mult = 80.0)
-                    )
-                    saveSessions(defaults)
-                    defaults
-                } else {
-                    list
+
+                if (!migrated) {
+                    prefs.edit().putBoolean(KEY_SESSIONS_MIGRATED_V1, true).apply()
+                    if (isUntouchedDefaultSessions(list)) {
+                        saveSessions(emptyList())
+                        return emptyList()
+                    }
                 }
+                list
             }
         } catch (e: Exception) {
             Log.e("StorageRepository", "Error loading sessions", e)
-            listOf(
-                Session(name = "12.AM", rate = 15.0, mult = 80.0),
-                Session(name = "4.PM", rate = 15.0, mult = 80.0)
-            )
+            emptyList()
         }
     }
 
@@ -78,7 +89,10 @@ class StorageRepository(context: Context) {
                 }
                 arr.put(obj)
             }
-            prefs.edit().putString(KEY_SESSIONS, arr.toString()).apply()
+            prefs.edit()
+                .putString(KEY_SESSIONS, arr.toString())
+                .putBoolean(KEY_SESSIONS_MIGRATED_V1, true)
+                .apply()
         } catch (e: Exception) {
             Log.e("StorageRepository", "Error saving sessions", e)
         }
@@ -99,12 +113,11 @@ class StorageRepository(context: Context) {
                         Agent(
                             id = obj.getInt("id"),
                             name = obj.getString("name"),
-                            rate = obj.optDouble("rate", 15.0),
-                            mult = obj.optDouble("mult", 80.0)
+                            rate = obj.optDouble("rate", 0.0),
+                            mult = obj.optDouble("mult", 0.0)
                         )
                     )
                 }
-                // If it only contains the old initial default sample agents, clear them
                 val isOldDefaults = list.size == 3 &&
                     list.getOrNull(0)?.name == "ကိုအောင်" &&
                     list.getOrNull(1)?.name == "မသီတာ" &&
@@ -155,12 +168,24 @@ class StorageRepository(context: Context) {
                     val items = mutableListOf<BetItem>()
                     for (j in 0 until itemsArr.length()) {
                         val itemObj = itemsArr.getJSONObject(j)
-                        items.add(
-                            BetItem(
-                                n = itemObj.getString("n"),
-                                a = itemObj.getLong("a")
+                        val savedId = itemObj.optLong("id", 0L)
+                        val amt = itemObj.optLong("a", 0L)
+                        if (validateBetAmount(amt).isValid) {
+                            items.add(
+                                if (savedId > 0L) {
+                                    BetItem(
+                                        n = itemObj.getString("n"),
+                                        a = amt,
+                                        id = savedId
+                                    )
+                                } else {
+                                    BetItem(
+                                        n = itemObj.getString("n"),
+                                        a = amt
+                                    )
+                                }
                             )
-                        )
+                        }
                     }
                     list.add(
                         Voucher(
@@ -198,6 +223,7 @@ class StorageRepository(context: Context) {
                     val itemsArr = JSONArray()
                     v.items.forEach { itm ->
                         val itemObj = JSONObject().apply {
+                            put("id", itm.id)
                             put("n", itm.n)
                             put("a", itm.a)
                         }
@@ -211,6 +237,70 @@ class StorageRepository(context: Context) {
         } catch (e: Exception) {
             Log.e("StorageRepository", "Error saving vouchers", e)
         }
+    }
+
+    /**
+     * Deletes ONLY the single number entry matching [numberId] (equivalent to DELETE ... WHERE id = :numberId).
+     * Never deletes the parent Voucher object even when its last number is removed.
+     */
+    fun deleteNumberById(numberId: Long): List<Voucher>? {
+        val current = loadVouchers()
+        var found = false
+        val updated = current.map { v ->
+            if (v.items.any { it.id == numberId }) {
+                found = true
+                v.copy(items = v.items.filter { it.id != numberId })
+            } else {
+                v
+            }
+        }
+        if (!found) return null
+        saveVouchers(updated)
+        return updated
+    }
+
+    /**
+     * Updates ONLY the single number entry matching [numberId], preserving its unique id and parent Voucher.
+     */
+    fun updateNumberById(numberId: Long, newNumber: String, newAmount: Long): List<Voucher>? {
+        if (!validateBetAmount(newAmount).isValid) return null
+        val current = loadVouchers()
+        var found = false
+        val updated = current.map { v ->
+            if (v.items.any { it.id == numberId }) {
+                found = true
+                v.copy(
+                    items = v.items.map { item ->
+                        if (item.id == numberId) item.copy(n = newNumber, a = newAmount) else item
+                    }
+                )
+            } else {
+                v
+            }
+        }
+        if (!found) return null
+        saveVouchers(updated)
+        return updated
+    }
+
+    /**
+     * Appends a single number entry to an existing Voucher (including an empty voucher).
+     */
+    fun addNumberToVoucher(voucherId: Long, item: BetItem): List<Voucher>? {
+        if (!validateBetAmount(item.a).isValid) return null
+        val current = loadVouchers()
+        var found = false
+        val updated = current.map { v ->
+            if (v.id == voucherId) {
+                found = true
+                v.copy(items = v.items + item)
+            } else {
+                v
+            }
+        }
+        if (!found) return null
+        saveVouchers(updated)
+        return updated
     }
 
     // Layoff Records
@@ -416,21 +506,56 @@ class StorageRepository(context: Context) {
         }
     }
 
+    /**
+     * Deletes ONLY the single daily settled record matching [recordId] (DELETE ... WHERE id = :recordId).
+     * Never clears the whole table.
+     */
+    fun deleteSettledRecordById(recordId: Long): List<SettledRecord>? {
+        val current = loadSettled()
+        if (current.none { it.id == recordId }) return null
+        val updated = current.filter { it.id != recordId }
+        saveSettled(updated)
+        return updated
+    }
+
+    /**
+     * Updates ONLY the single daily settled record matching [recordId], keeping the exact same id
+     * and leaving all other records unchanged.
+     */
+    fun updateSettledRecordById(recordId: Long, updatedRecord: SettledRecord): List<SettledRecord>? {
+        val current = loadSettled()
+        if (current.none { it.id == recordId }) return null
+        val updated = current.map { r ->
+            if (r.id == recordId) updatedRecord.copy(id = recordId) else r
+        }
+        saveSettled(updated)
+        return updated
+    }
+
     // App Settings
     fun loadSettings(): AppSettings {
         return try {
+            val migrated = prefs.getBoolean(KEY_SETTINGS_MIGRATED_V1, false)
             val jsonStr = prefs.getString(KEY_SETTINGS, null)
             if (jsonStr.isNullOrEmpty()) {
                 val defaults = AppSettings()
+                prefs.edit().putBoolean(KEY_SETTINGS_MIGRATED_V1, true).apply()
                 saveSettings(defaults)
                 defaults
             } else {
                 val obj = JSONObject(jsonStr)
-                AppSettings(
-                    maxBet = obj.optLong("maxBet", 9999999L),
-                    password = obj.optString("password", "1234"),
-                    brakeLimit = obj.optLong("brakeLimit", 50000L)
+                val password = obj.optString("password", "1234")
+                val brakeLimit = obj.optLong("brakeLimit", 0L)
+                val soundEnabled = obj.optBoolean("soundEnabled", true)
+                val loaded = AppSettings(
+                    password = password,
+                    brakeLimit = brakeLimit,
+                    soundEnabled = soundEnabled
                 )
+                if (!migrated) {
+                    prefs.edit().putBoolean(KEY_SETTINGS_MIGRATED_V1, true).apply()
+                }
+                loaded
             }
         } catch (e: Exception) {
             Log.e("StorageRepository", "Error loading settings", e)
@@ -441,11 +566,14 @@ class StorageRepository(context: Context) {
     fun saveSettings(settings: AppSettings) {
         try {
             val obj = JSONObject().apply {
-                put("maxBet", settings.maxBet)
                 put("password", settings.password)
                 put("brakeLimit", settings.brakeLimit)
+                put("soundEnabled", settings.soundEnabled)
             }
-            prefs.edit().putString(KEY_SETTINGS, obj.toString()).apply()
+            prefs.edit()
+                .putString(KEY_SETTINGS, obj.toString())
+                .putBoolean(KEY_SETTINGS_MIGRATED_V1, true)
+                .apply()
         } catch (e: Exception) {
             Log.e("StorageRepository", "Error saving settings", e)
         }
@@ -453,7 +581,11 @@ class StorageRepository(context: Context) {
 
     fun resetAllData() {
         try {
-            prefs.edit().clear().apply()
+            prefs.edit()
+                .clear()
+                .putBoolean(KEY_SESSIONS_MIGRATED_V1, true)
+                .putBoolean(KEY_SETTINGS_MIGRATED_V1, true)
+                .apply()
         } catch (e: Exception) {
             Log.e("StorageRepository", "Error resetting data", e)
         }

@@ -14,16 +14,19 @@ import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.ui.MainViewModel
 import com.example.ui.Screen
 import com.example.ui.components.CloverLogo
@@ -36,7 +39,10 @@ fun HomeScreen(
 ) {
     val selectedSession by viewModel.selectedSession.collectAsState()
     val sessions by viewModel.sessions.collectAsState()
-    var showSessionMenu by remember { mutableStateOf(false) }
+    var showSessionMenu by rememberSaveable { mutableStateOf(false) }
+
+    val noRoundsText = stringResource(R.string.no_rounds_yet)
+    val selectRoundPrompt = stringResource(R.string.select_round_prompt)
 
     Column(
         modifier = modifier
@@ -63,7 +69,7 @@ fun HomeScreen(
                     modifier = Modifier.testTag("home_header_logo")
                 )
                 Text(
-                    text = "Lucky2D",
+                    text = stringResource(R.string.app_name),
                     color = Color.White,
                     fontFamily = LuckySansFontFamily,
                     fontWeight = FontWeight.Bold,
@@ -148,7 +154,7 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(36.dp))
 
-            // Round Selector & Settings Bar: "အကြိမ် ရွေးပါ - 12.AM" next to Settings gear icon
+            // Round Selector & Settings Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -157,8 +163,13 @@ fun HomeScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box {
+                    val currentRoundDisplay = if (sessions.isEmpty() || selectedSession.isEmpty()) {
+                        noRoundsText
+                    } else {
+                        selectedSession
+                    }
                     Text(
-                        text = "အကြိမ် ရွေးပါ - ${selectedSession.ifEmpty { "12.AM" }}",
+                        text = "$selectRoundPrompt - $currentRoundDisplay",
                         color = LuckyTextPrimary,
                         fontSize = 19.sp,
                         fontWeight = FontWeight.Medium,
@@ -173,26 +184,34 @@ fun HomeScreen(
                         onDismissRequest = { showSessionMenu = false },
                         modifier = Modifier.background(LuckyCard)
                     ) {
-                        val availableSessions = if (sessions.isEmpty()) {
-                            listOf("12.AM", "4.PM")
-                        } else {
-                            sessions.map { it.name }
-                        }
-                        availableSessions.forEach { sessName ->
+                        if (sessions.isEmpty()) {
                             DropdownMenuItem(
                                 text = {
                                     Text(
-                                        text = sessName,
-                                        color = if (sessName == selectedSession) LuckyHeader else LuckyTextPrimary,
-                                        fontWeight = if (sessName == selectedSession) FontWeight.Bold else FontWeight.Normal,
-                                        fontSize = 16.sp
+                                        text = noRoundsText,
+                                        color = LuckyTextMuted,
+                                        fontSize = 15.sp
                                     )
                                 },
-                                onClick = {
-                                    viewModel.setSession(sessName)
-                                    showSessionMenu = false
-                                }
+                                onClick = { showSessionMenu = false }
                             )
+                        } else {
+                            sessions.forEach { sess ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = sess.name,
+                                            color = if (sess.name == selectedSession) LuckyHeader else LuckyTextPrimary,
+                                            fontWeight = if (sess.name == selectedSession) FontWeight.Bold else FontWeight.Normal,
+                                            fontSize = 16.sp
+                                        )
+                                    },
+                                    onClick = {
+                                        viewModel.setSession(sess.name)
+                                        showSessionMenu = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }

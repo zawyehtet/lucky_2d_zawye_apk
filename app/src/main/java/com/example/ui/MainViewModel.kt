@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.*
+import com.example.util.SoundManager
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -73,7 +74,53 @@ data class Agent2DSettlementItem(
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
+    companion object {
+        fun parseAmountOrZero(input: String): Long = input.trim().toLongOrNull() ?: 0L
+        fun parseDoubleOrZero(input: String): Double = input.trim().toDoubleOrNull() ?: 0.0
+
+        fun validateBetAmountInput(rawInput: String?): BetAmountValidationResult = validateBetAmount(rawInput)
+        fun validateBetAmountValue(amount: Long): BetAmountValidationResult = validateBetAmount(amount)
+
+        fun shouldShowSaveButton(currentInput: String, savedValue: String): Boolean {
+            return currentInput.isNotBlank() && currentInput.trim() != savedValue.trim()
+        }
+
+        fun shouldShowRoundSaveButton(roundNameInput: String): Boolean {
+            return roundNameInput.isNotBlank()
+        }
+
+        fun formatWinningHeaderLine(
+            winningNumber: String?,
+            amount: Long,
+            useThousandsSeparator: Boolean = false
+        ): String {
+            val clean = winningNumber?.trim().orEmpty()
+            val numPart = if (clean.isEmpty()) {
+                "-"
+            } else {
+                val parsed = clean.toIntOrNull()
+                if (parsed != null && parsed in 0..99) "%02d".format(Locale.US, parsed) else clean
+            }
+            val safeAmount = if (numPart == "-") 0L else amount.coerceAtLeast(0L)
+            val amtPart = if (useThousandsSeparator) {
+                java.text.NumberFormat.getNumberInstance(Locale.US).format(safeAmount)
+            } else {
+                safeAmount.toString()
+            }
+            return "ပေါက်သီး $numPart=$amtPart"
+        }
+
+        fun formatDailyTotalResultText(profitLoss: Long): String {
+            return when {
+                profitLoss > 0L -> "အမြတ် +${java.text.NumberFormat.getNumberInstance(Locale.US).format(profitLoss)}"
+                profitLoss < 0L -> "အရှုံး -${java.text.NumberFormat.getNumberInstance(Locale.US).format(kotlin.math.abs(profitLoss))}"
+                else -> "0"
+            }
+        }
+    }
+
     private val repository = StorageRepository(application)
+    val soundManager: SoundManager = SoundManager
 
     private val dateFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     private val displayDateFormatter = SimpleDateFormat("dd MMMM yyyy", Locale.ENGLISH)
@@ -85,7 +132,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedDate = MutableStateFlow(todayDate)
     val selectedDate: StateFlow<String> = _selectedDate.asStateFlow()
 
-    private val _selectedSession = MutableStateFlow("12.AM")
+    private val _selectedSession = MutableStateFlow("")
     val selectedSession: StateFlow<String> = _selectedSession.asStateFlow()
 
     private val _currentScreen = MutableStateFlow(Screen.HOME)
@@ -126,19 +173,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _entryItems = MutableStateFlow<List<BetItem>>(emptyList())
     val entryItems: StateFlow<List<BetItem>> = _entryItems.asStateFlow()
 
-    // Brake screen limit state
-    private val _currentBrakeInput = MutableStateFlow("50000")
+    val entryTotalAmount: Long
+        get() = _entryItems.value.sumOf { it.a }
+
+    // Brake screen limit state (starts empty)
+    private val _currentBrakeInput = MutableStateFlow("")
     val currentBrakeInput: StateFlow<String> = _currentBrakeInput.asStateFlow()
+
+    // Flow A: active winning number passed to 2D စာရင်းချုပ်
+    private val _activeWinningNumberFor2DSummary = MutableStateFlow<String?>(null)
+    val activeWinningNumberFor2DSummary: StateFlow<String?> = _activeWinningNumberFor2DSummary.asStateFlow()
+
+    // Flow B: daily record currently being edited on HomeScreen (ပင်မစာမျက်နှာ)
+    private val _editingSettledRecord = MutableStateFlow<SettledRecord?>(null)
+    val editingSettledRecord: StateFlow<SettledRecord?> = _editingSettledRecord.asStateFlow()
 
     // Toast event message
     private val _toastEvent = MutableSharedFlow<String>()
     val toastEvent: SharedFlow<String> = _toastEvent.asSharedFlow()
 
+    val hasActiveRound: Boolean
+        get() = _sessions.value.isNotEmpty() &&
+            _selectedSession.value.isNotBlank() &&
+            _sessions.value.any { it.name == _selectedSession.value }
+
+    val isResultInputEnabled: Boolean
+        get() = hasActiveRound
+
+    val isCommissionSetForEntry: Boolean
+        get() = _entryAgent.value != null
+
+    // Guard against rapid duplicate delete taps for the same numberId / settledRecordId
+    private val deletedNumberIds = mutableSetOf<Long>()
+    private val deletedSettledIds = mutableSetOf<Long>()
+    private val deletedRoundKeys = mutableSetOf<String>()
+    private val manuallyEditedRecordIds = mutableSetOf<Long>()
+    private var nextSettledIdCounter = 1L
+
     init {
+        soundManager.init(application)
         loadAllData()
     }
 
     fun loadAllData() {
+        deletedNumberIds.clear()
+        deletedSettledIds.clear()
+        deletedRoundKeys.clear()
+        manuallyEditedRecordIds.clear()
         val loadedSessions = repository.loadSessions()
         _sessions.value = loadedSessions
         if (loadedSessions.isNotEmpty()) {
@@ -146,7 +227,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _selectedSession.value = loadedSessions.first().name
             }
         } else {
-            _selectedSession.value = "12.AM"
+            _selectedSession.value = ""
         }
 
         _agents.value = repository.loadAgents()
@@ -157,7 +238,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _settled.value = repository.loadSettled()
         val s = repository.loadSettings()
         _settings.value = s
-        _currentBrakeInput.value = s.brakeLimit.toString()
+        soundManager.isSoundEnabled = s.soundEnabled
+        _currentBrakeInput.value = if (s.brakeLimit > 0L) s.brakeLimit.toString() else ""
+    }
+
+    fun onInputFocusOrTap() {
+        soundManager.playClick()
+    }
+
+    fun onEditActionStarted() {
+        soundManager.playEdit()
+    }
+
+    fun setSoundEnabled(enabled: Boolean) {
+        val updated = _settings.value.copy(soundEnabled = enabled)
+        _settings.value = updated
+        soundManager.isSoundEnabled = enabled
+        repository.saveSettings(updated)
     }
 
     fun showToast(msg: String) {
@@ -167,7 +264,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setSession(session: String) {
-        _selectedSession.value = session
+        if (session.isBlank() || _sessions.value.any { it.name == session }) {
+            _selectedSession.value = session
+        }
     }
 
     fun setDate(date: String) {
@@ -175,13 +274,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun navigateTo(screen: Screen) {
-        if (_currentScreen.value != screen) {
+        if (_currentScreen.value == screen) return
+        val existingIndex = screenHistory.indexOf(screen)
+        if (existingIndex >= 0) {
+            while (screenHistory.size > existingIndex + 1) {
+                screenHistory.removeAt(screenHistory.lastIndex)
+            }
+        } else {
             screenHistory.add(screen)
-            _currentScreen.value = screen
         }
+        _currentScreen.value = screen
+    }
+
+    fun getBackStack(): List<Screen> = screenHistory.toList()
+
+    fun openNumbersFromWinningNumber() {
+        navigateTo(Screen.NUMBERS)
+    }
+
+    fun open2DSummaryFromWinningNumber(
+        winningNumber: String = getWinningNumberForCurrentSession(),
+        session: String = _selectedSession.value
+    ) {
+        if (session.isNotBlank() && _sessions.value.any { it.name == session }) {
+            _selectedSession.value = session
+        }
+        val cleanWin = winningNumber.trim()
+        if (cleanWin.isNotEmpty()) {
+            _activeWinningNumberFor2DSummary.value = cleanWin
+        } else {
+            _activeWinningNumberFor2DSummary.value = getWinningNumberForCurrentSession().ifEmpty { null }
+        }
+        navigateTo(Screen.AGENT_SETTLEMENT)
     }
 
     fun goBack(): Boolean {
+        if (_editingSettledRecord.value != null && _currentScreen.value == Screen.HOME) {
+            _editingSettledRecord.value = null
+        }
         if (screenHistory.size > 1) {
             screenHistory.removeAt(screenHistory.lastIndex)
             _currentScreen.value = screenHistory.last()
@@ -197,25 +327,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Agent Management
     fun addAgent(name: String, rate: Double, mult: Double) {
+        val cleanName = name.trim()
+        if (cleanName.isEmpty()) return
         val nextId = (_agents.value.maxOfOrNull { it.id } ?: 0) + 1
-        val newAgent = Agent(id = nextId, name = name.trim(), rate = rate, mult = mult)
+        val newAgent = Agent(id = nextId, name = cleanName, rate = rate, mult = mult)
         val updated = _agents.value + newAgent
         _agents.value = updated
         repository.saveAgents(updated)
+        soundManager.playSave()
         showToast("ကော်မရှင် အသစ် ထည့်သွင်းပြီးပါပြီ")
     }
 
     fun updateAgent(agent: Agent) {
-        val updated = _agents.value.map { if (it.id == agent.id) agent else it }
+        val cleanName = agent.name.trim()
+        if (cleanName.isEmpty()) return
+        val normalized = agent.copy(name = cleanName)
+        val updated = _agents.value.map { if (it.id == normalized.id) normalized else it }
         _agents.value = updated
+        if (_entryAgent.value?.id == normalized.id) {
+            _entryAgent.value = normalized
+        }
         repository.saveAgents(updated)
+        soundManager.playEdit()
         showToast("ပြင်ဆင်ပြီးပါပြီ")
     }
 
     fun deleteAgent(agentId: Int) {
+        if (_agents.value.none { it.id == agentId }) return
         val updated = _agents.value.filter { it.id != agentId }
         _agents.value = updated
         repository.saveAgents(updated)
+        soundManager.playDelete()
         showToast("ဖျက်ပြီးပါပြီ")
     }
 
@@ -226,60 +368,119 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         navigateTo(Screen.NUMBER_ENTRY)
     }
 
-    fun setEntryAgent(agent: Agent) {
+    fun setEntryAgent(agent: Agent?) {
         _entryAgent.value = agent
     }
 
+    fun validateBetAmountInput(rawInput: String?): BetAmountValidationResult = validateBetAmount(rawInput)
+
+    fun validateBetAmountValue(amount: Long): BetAmountValidationResult = validateBetAmount(amount)
+
     // Number Entry Draft manipulations
-    fun addEntryItem(item: BetItem) {
-        if (settings.value.maxBet > 0 && item.a > settings.value.maxBet) {
-            showToast("သတ်မှတ်ထားသော အများဆုံးထိုးကြေး (${settings.value.maxBet}) ထက် ကျော်လွန်နေပါသည်")
-            return
+    fun addEntryItem(item: BetItem): BetAmountValidationResult {
+        if (!hasActiveRound) {
+            showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
+            return BetAmountValidationResult.Empty
         }
-        if (_blocked.value.contains(item.n)) {
-            showToast("${item.n} သည် မရဂဏန်း ဖြစ်ပါသည်")
-            return
+        if (!isCommissionSetForEntry) return BetAmountValidationResult.Empty
+        val cleanNum = item.n.trim()
+        if (cleanNum.length != 2 || !cleanNum.all { it.isDigit() }) return BetAmountValidationResult.Empty
+        val amountValidation = validateBetAmount(item.a)
+        if (!amountValidation.isValid) {
+            showToast("ထိုးကြေး ပမာဏ လက်မခံပါ")
+            return amountValidation
         }
-        _entryItems.value = _entryItems.value + item
+        if (_blocked.value.contains(cleanNum)) {
+            showToast("$cleanNum သည် မရဂဏန်း ဖြစ်ပါသည်")
+            return BetAmountValidationResult.Empty
+        }
+        _entryItems.value = _entryItems.value + item.copy(n = cleanNum)
+        soundManager.playSave()
+        return BetAmountValidationResult.Valid
     }
 
-    fun addEntryItems(items: List<BetItem>) {
-        val valid = items.filter { item ->
-            val blocked = _blocked.value.contains(item.n)
-            val overLimit = settings.value.maxBet > 0 && item.a > settings.value.maxBet
-            !blocked && !overLimit
+    fun addEntryItems(items: List<BetItem>): BetAmountValidationResult {
+        if (!hasActiveRound) {
+            showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
+            return BetAmountValidationResult.Empty
         }
+        if (!isCommissionSetForEntry) return BetAmountValidationResult.Empty
+        if (items.isEmpty()) return BetAmountValidationResult.Empty
+        val invalidResult = items.firstNotNullOfOrNull { item ->
+            val v = validateBetAmount(item.a)
+            if (!v.isValid) v else null
+        }
+        if (invalidResult != null) {
+            showToast("ထိုးကြေး ပမာဏ လက်မခံပါ")
+            return invalidResult
+        }
+        val valid = items.filter { item ->
+            val cleanNum = item.n.trim()
+            val blocked = _blocked.value.contains(cleanNum)
+            cleanNum.length == 2 && cleanNum.all { it.isDigit() } && !blocked && validateBetAmount(item.a).isValid
+        }
+        if (valid.isEmpty()) return BetAmountValidationResult.Empty
         _entryItems.value = _entryItems.value + valid
+        soundManager.playSave()
+        return BetAmountValidationResult.Valid
     }
 
     fun removeLastEntryItem() {
+        if (!isCommissionSetForEntry) return
         if (_entryItems.value.isNotEmpty()) {
             _entryItems.value = _entryItems.value.dropLast(1)
+            soundManager.playDelete()
         }
     }
 
-    fun editEntryItem(index: Int, newNumber: String, newAmount: Long) {
+    fun editEntryItem(index: Int, newNumber: String, newAmount: Long): Boolean {
+        if (!isCommissionSetForEntry) return false
+        val cleanNum = newNumber.trim()
+        if (cleanNum.length != 2 || !cleanNum.all { it.isDigit() }) {
+            return false
+        }
+        val amountValidation = validateBetAmount(newAmount)
+        if (!amountValidation.isValid) {
+            showToast("ထိုးကြေး ပမာဏ လက်မခံပါ")
+            return false
+        }
+        if (_blocked.value.contains(cleanNum)) {
+            showToast("$cleanNum သည် မရဂဏန်း ဖြစ်ပါသည်")
+            return false
+        }
         if (index in _entryItems.value.indices) {
             val updated = _entryItems.value.toMutableList()
-            updated[index] = BetItem(newNumber, newAmount)
+            updated[index] = updated[index].copy(n = cleanNum, a = newAmount)
             _entryItems.value = updated
+            soundManager.playEdit()
+            return true
         }
+        return false
     }
 
-    fun deleteEntryItem(index: Int) {
+    fun deleteEntryItem(index: Int): Boolean {
+        if (!isCommissionSetForEntry) return false
         if (index in _entryItems.value.indices) {
             val updated = _entryItems.value.toMutableList()
             updated.removeAt(index)
             _entryItems.value = updated
+            soundManager.playDelete()
+            return true
         }
+        return false
     }
 
     fun clearEntryItems() {
         _entryItems.value = emptyList()
     }
 
-    // Requirement 2: Stay on Bet Input View after submitting voucher (do NOT redirect to Vouchers page)
+    // Stay on Bet Input View after submitting voucher (do NOT redirect to Vouchers page)
+    // Also require an active round before saving voucher
     fun commitCurrentVoucher(): Boolean {
+        if (!hasActiveRound) {
+            showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
+            return false
+        }
         val currentAgent = _entryAgent.value
         if (currentAgent == null) {
             showToast("ထိုးသူ ရွေးချယ်ပါ")
@@ -288,6 +489,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val items = _entryItems.value
         if (items.isEmpty()) {
             showToast("ထိုးမည့် ဂဏန်းများ ထည့်သွင်းပါ")
+            return false
+        }
+        if (items.any { !validateBetAmount(it.a).isValid }) {
+            showToast("ထိုးကြေး ပမာဏ လက်မခံပါ")
             return false
         }
 
@@ -311,61 +516,109 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         repository.saveVouchers(updated)
 
         _entryItems.value = emptyList()
+        soundManager.playSave()
         showToast("ဘောင်ချာ (No.$nextNo) သိမ်းဆည်းပြီးပါပြီ")
-        // Stay on NumberEntryScreen for continuous entry
         return true
     }
 
-    // Edit Voucher lines
-    fun editVoucherItem(voucherId: Long, itemIndex: Int, newNumber: String, newAmount: Long) {
-        val updated = _vouchers.value.mapNotNull { v ->
-            if (v.id == voucherId) {
-                if (itemIndex in v.items.indices) {
-                    val newItems = v.items.toMutableList()
-                    newItems[itemIndex] = BetItem(newNumber, newAmount)
-                    v.copy(items = newItems)
-                } else v
-            } else v
+    // Single-number edit and delete in a Voucher by unique numberId (never deletes the Voucher object)
+    fun editNumber(numberId: Long, newNumber: String, newAmount: Long): Boolean {
+        val cleanNum = newNumber.trim()
+        if (cleanNum.length != 2 || !cleanNum.all { it.isDigit() }) return false
+        val amountValidation = validateBetAmount(newAmount)
+        if (!amountValidation.isValid) {
+            showToast("ထိုးကြေး ပမာဏ လက်မခံပါ")
+            return false
         }
-        _vouchers.value = updated
-        repository.saveVouchers(updated)
-        showToast("ဘောင်ချာ ပြင်ဆင်ပြီးပါပြီ")
-    }
-
-    fun deleteVoucherItem(voucherId: Long, itemIndex: Int) {
-        val updated = _vouchers.value.mapNotNull { v ->
-            if (v.id == voucherId) {
-                if (itemIndex in v.items.indices) {
-                    val newItems = v.items.toMutableList()
-                    newItems.removeAt(itemIndex)
-                    if (newItems.isEmpty()) {
-                        null
-                    } else {
-                        v.copy(items = newItems)
+        if (_blocked.value.contains(cleanNum)) {
+            showToast("$cleanNum သည် မရဂဏန်း ဖြစ်ပါသည်")
+            return false
+        }
+        var changed = false
+        val updated = _vouchers.value.map { v ->
+            if (v.items.any { it.id == numberId }) {
+                changed = true
+                v.copy(
+                    items = v.items.map { item ->
+                        if (item.id == numberId) item.copy(n = cleanNum, a = newAmount) else item
                     }
-                } else v
-            } else v
+                )
+            } else {
+                v
+            }
         }
+        if (!changed) return false
         _vouchers.value = updated
-        repository.saveVouchers(updated)
-        showToast("ဘောင်ချာစာကြောင်း ဖျက်ပြီးပါပြီ")
+        repository.updateNumberById(numberId, cleanNum, newAmount) ?: repository.saveVouchers(updated)
+        soundManager.playEdit()
+        showToast("ဘောင်ချာ ပြင်ဆင်ပြီးပါပြီ")
+        return true
     }
 
-    fun deleteVoucher(voucherId: Long) {
-        val updated = _vouchers.value.filter { it.id != voucherId }
+    fun deleteNumber(numberId: Long): Boolean {
+        if (!deletedNumberIds.add(numberId)) {
+            return false
+        }
+        var changed = false
+        val updated = _vouchers.value.map { v ->
+            if (v.items.any { it.id == numberId }) {
+                changed = true
+                v.copy(items = v.items.filter { it.id != numberId })
+            } else {
+                v
+            }
+        }
+        if (!changed) {
+            deletedNumberIds.remove(numberId)
+            return false
+        }
         _vouchers.value = updated
-        repository.saveVouchers(updated)
-        showToast("ဘောင်ချာ ဖျက်ပြီးပါပြီ")
+        repository.deleteNumberById(numberId) ?: repository.saveVouchers(updated)
+        soundManager.playDelete()
+        showToast("ဘောင်ချာစာကြောင်း ဖျက်ပြီးပါပြီ")
+        return true
+    }
+
+    fun addNumberToVoucher(voucherId: Long, number: String, amount: Long): Boolean {
+        val cleanNum = number.trim()
+        if (cleanNum.length != 2 || !cleanNum.all { it.isDigit() }) return false
+        val amountValidation = validateBetAmount(amount)
+        if (!amountValidation.isValid) {
+            showToast("ထိုးကြေး ပမာဏ လက်မခံပါ")
+            return false
+        }
+        if (_blocked.value.contains(cleanNum)) {
+            showToast("$cleanNum သည် မရဂဏန်း ဖြစ်ပါသည်")
+            return false
+        }
+        val newItem = BetItem(n = cleanNum, a = amount)
+        var changed = false
+        val updated = _vouchers.value.map { v ->
+            if (v.id == voucherId) {
+                changed = true
+                v.copy(items = v.items + newItem)
+            } else {
+                v
+            }
+        }
+        if (!changed) return false
+        _vouchers.value = updated
+        repository.addNumberToVoucher(voucherId, newItem) ?: repository.saveVouchers(updated)
+        soundManager.playSave()
+        showToast("ဂဏန်း ထည့်သွင်းပြီးပါပြီ")
+        return true
     }
 
     // Aggregations for Numbers Screen and Brake Screen
     fun getFilteredVouchers(date: String = _selectedDate.value, session: String = _selectedSession.value): List<Voucher> {
+        if (session.isBlank()) return emptyList()
         return _vouchers.value.filter {
             it.date == date && it.session == session
         }
     }
 
     fun getFilteredLayoffs(date: String = _selectedDate.value, session: String = _selectedSession.value): List<LayoffRecord> {
+        if (session.isBlank()) return emptyList()
         return _layoffs.value.filter {
             it.date == date && it.session == session
         }
@@ -404,22 +657,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Sorted by netAmount descending, then number ascending
         return allNumbers.sortedWith(compareByDescending<NumberSummary> { it.netAmount }.thenBy { it.n })
     }
 
-    // Requirement 3: Breakdown of each sales agent's performance for a specific 2D number
+    // Breakdown of each sales agent's performance for a specific 2D number
     fun getNumberAgentBreakdown(number: String): List<NumberAgentBreakdownItem> {
         val vouchers = getFilteredVouchers()
         val sess = _sessions.value.firstOrNull { it.name == _selectedSession.value }
-        val defaultMult = if ((sess?.mult ?: 0.0) > 0.0) sess!!.mult else 80.0
-        val defaultRate = if ((sess?.rate ?: 0.0) > 0.0) sess!!.rate else 15.0
+        val defaultMult = sess?.mult ?: 0.0
+        val defaultRate = sess?.rate ?: 0.0
 
-        // Include all registered agents plus any agent name on vouchers
-        val agentById = _agents.value.associateBy { it.id }
         val result = mutableListOf<NumberAgentBreakdownItem>()
-
-        // Collect all unique agents from _agents and vouchers
         val processedAgentIds = mutableSetOf<Int>()
 
         for (agent in _agents.value) {
@@ -463,7 +711,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Also check if any voucher has an agentId not in _agents
         val extraVouchers = vouchers.filter { it.agentId !in processedAgentIds }
         extraVouchers.groupBy { it.agentId to it.agent }.forEach { (pair, vList) ->
             val (agId, agName) = pair
@@ -527,16 +774,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun saveBrakeLimit() {
-        val limit = _currentBrakeInput.value.toLongOrNull() ?: 50000L
+        val raw = _currentBrakeInput.value.trim()
+        if (raw.isEmpty()) return
+        val limit = parseAmountOrZero(raw)
         val updated = _settings.value.copy(brakeLimit = limit)
         _settings.value = updated
         repository.saveSettings(updated)
+        soundManager.playSave()
         showToast("ဘရိတ်သတ်မှတ်ချက် (${limit}) သိမ်းဆည်းပြီးပါပြီ")
     }
 
     // Layoff execution (ALL or 30 rows)
     fun executeLayoff(isAll: Boolean) {
-        val limit = _currentBrakeInput.value.toLongOrNull() ?: _settings.value.brakeLimit
+        if (!hasActiveRound) {
+            showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
+            return
+        }
+        val limit = if (_currentBrakeInput.value.isNotBlank()) {
+            parseAmountOrZero(_currentBrakeInput.value)
+        } else {
+            _settings.value.brakeLimit
+        }
         val summaries = getAggregatedNumbers()
         val candidateItems = summaries.filter { it.netAmount > limit }
 
@@ -567,23 +825,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val updated = listOf(record) + _layoffs.value
         _layoffs.value = updated
         repository.saveLayoffs(updated)
+        soundManager.playSave()
         showToast("တင်ကွက် (${layoffItems.size} ခု ၊ $totalLayoff) တင်ပြီးပါပြီ")
     }
 
     // Layoff Item & Batch Management
     fun deleteLayoffRecord(recordId: Long) {
+        if (_layoffs.value.none { it.id == recordId }) return
         val updated = _layoffs.value.filter { it.id != recordId }
         _layoffs.value = updated
         repository.saveLayoffs(updated)
+        soundManager.playDelete()
         showToast("တင်ကွက်မှတ်တမ်း ဖျက်ပြီးပါပြီ")
     }
 
     fun deleteLayoffItem(recordId: Long, itemIndex: Int) {
+        var changed = false
         val updated = _layoffs.value.mapNotNull { rec ->
             if (rec.id == recordId) {
                 val newItems = rec.items.toMutableList()
                 if (itemIndex in newItems.indices) {
                     newItems.removeAt(itemIndex)
+                    changed = true
                 }
                 if (newItems.isEmpty()) {
                     null
@@ -592,54 +855,121 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } else rec
         }
+        if (!changed) return
         _layoffs.value = updated
         repository.saveLayoffs(updated)
+        soundManager.playDelete()
         showToast("တင်ကွက် ဖျက်ပြီးပါပြီ")
     }
 
     fun editLayoffItem(recordId: Long, itemIndex: Int, newAmount: Long) {
+        if (newAmount <= 0L) return
+        var changed = false
         val updated = _layoffs.value.map { rec ->
             if (rec.id == recordId) {
                 val newItems = rec.items.toMutableList()
                 if (itemIndex in newItems.indices) {
                     newItems[itemIndex] = newItems[itemIndex].copy(a = newAmount)
+                    changed = true
                 }
                 rec.copy(items = newItems, total = newItems.sumOf { it.a })
             } else rec
         }
+        if (!changed) return
         _layoffs.value = updated
         repository.saveLayoffs(updated)
+        soundManager.playEdit()
         showToast("တင်ကွက် ပြင်ဆင်ပြီးပါပြီ")
     }
 
     // Settlement
     fun getWinningNumberForCurrentSession(): String {
+        if (!hasActiveRound) return ""
         return _wins.value.firstOrNull {
             it.date == _selectedDate.value && it.session == _selectedSession.value
         }?.n ?: ""
     }
 
+    // Reuses the existing getAggregatedNumbers() calculation to get the total amount bet on the winning number
+    fun getWinningNumberBetAmountForCurrentSession(winNumOverride: String? = null): Long {
+        val rawWin = winNumOverride?.trim() ?: getWinningNumberForCurrentSession()
+        if (rawWin.isEmpty()) return 0L
+        val parsed = rawWin.toIntOrNull()
+        val normalizedWin = if (parsed != null && parsed in 0..99) "%02d".format(Locale.US, parsed) else rawWin
+        val summary = getAggregatedNumbers().firstOrNull { it.n == normalizedWin }
+        return summary?.netAmount ?: 0L
+    }
+
+    fun getFormattedWinningHeaderForCurrentSession(
+        winNumOverride: String? = null,
+        useThousandsSeparator: Boolean = false
+    ): String {
+        val rawWin = winNumOverride?.trim() ?: getWinningNumberForCurrentSession()
+        val amount = getWinningNumberBetAmountForCurrentSession(rawWin)
+        return formatWinningHeaderLine(rawWin, amount, useThousandsSeparator)
+    }
+
+    fun hasSavedWinningNumberForCurrentSession(): Boolean {
+        val win = getWinningNumberForCurrentSession()
+        return win.length == 2 && win.all { it.isDigit() }
+    }
+
     fun setWinningNumber(n: String) {
+        if (!hasActiveRound) {
+            showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
+            return
+        }
+        val clean = n.trim()
+        if (clean.isEmpty()) {
+            clearWinningNumberForCurrentSession()
+            return
+        }
+        if (clean.length != 2 || !clean.all { it.isDigit() }) return
         val filtered = _wins.value.filterNot {
             it.date == _selectedDate.value && it.session == _selectedSession.value
         }
-        val updated = listOf(WinRecord(_selectedDate.value, _selectedSession.value, n)) + filtered
+        val updated = listOf(WinRecord(_selectedDate.value, _selectedSession.value, clean)) + filtered
         _wins.value = updated
+        _activeWinningNumberFor2DSummary.value = clean
         repository.saveWins(updated)
-        showToast("ထွက်ဂဏန်း ($n) သိမ်းဆည်းပြီးပါပြီ")
+        soundManager.playSave()
+        showToast("ထွက်ဂဏန်း ($clean) သိမ်းဆည်းပြီးပါပြီ")
+    }
+
+    fun clearWinningNumberForCurrentSession() {
+        val currentDate = _selectedDate.value
+        val currentSess = _selectedSession.value
+        if (_wins.value.none { it.date == currentDate && it.session == currentSess }) {
+            _activeWinningNumberFor2DSummary.value = null
+            return
+        }
+        val updated = _wins.value.filterNot { it.date == currentDate && it.session == currentSess }
+        _wins.value = updated
+        _activeWinningNumberFor2DSummary.value = null
+        repository.saveWins(updated)
     }
 
     fun updateWinRecord(oldRecord: WinRecord, newRecord: WinRecord) {
+        if (newRecord.n.trim().isEmpty()) return
         val updated = _wins.value.map { if (it.date == oldRecord.date && it.session == oldRecord.session) newRecord else it }
         _wins.value = updated
+        if (newRecord.date == _selectedDate.value && newRecord.session == _selectedSession.value) {
+            _activeWinningNumberFor2DSummary.value = newRecord.n.trim()
+        }
         repository.saveWins(updated)
+        soundManager.playEdit()
         showToast("ထွက်ဂဏန်း ပြင်ဆင်ပြီးပါပြီ")
     }
 
     fun deleteWinRecord(record: WinRecord) {
+        if (_wins.value.none { it.date == record.date && it.session == record.session }) return
         val updated = _wins.value.filterNot { it.date == record.date && it.session == record.session }
         _wins.value = updated
+        if (record.date == _selectedDate.value && record.session == _selectedSession.value) {
+            _activeWinningNumberFor2DSummary.value = null
+        }
         repository.saveWins(updated)
+        soundManager.playDelete()
         showToast("ထွက်ဂဏန်း ဖျက်ပြီးပါပြီ")
     }
 
@@ -678,17 +1008,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val totalRetained = retainedPerNum.values.sum()
 
         val sess = _sessions.value.firstOrNull { it.name == session }
-        val defaultRate = sess?.rate ?: 15.0
-        val defaultMult = sess?.mult ?: 80.0
+        val defaultRate = sess?.rate ?: 0.0
+        val defaultMult = if ((sess?.mult ?: 0.0) > 0.0) {
+            sess!!.mult
+        } else {
+            _agents.value.firstOrNull { it.mult > 0.0 }?.mult ?: 0.0
+        }
 
         val agentMap = _agents.value.associateBy { it.id }
         var totalCommission = 0.0
+        var totalPayout = 0.0
 
         val vouchersByAgent = vouchers.groupBy { it.agentId }
         for ((agentId, agentVouchers) in vouchersByAgent) {
             val ag = agentMap[agentId] ?: _agents.value.firstOrNull { it.name == agentVouchers.firstOrNull()?.agent }
             val rate = if ((ag?.rate ?: 0.0) > 0.0) ag!!.rate else defaultRate
+            val mult = if ((ag?.mult ?: 0.0) > 0.0) ag!!.mult else defaultMult
             var agentCommissionBase = 0.0
+            var agentWinRetainedBase = 0.0
             agentVouchers.forEach { v ->
                 v.items.forEach { item ->
                     val tot = totalPerNum[item.n] ?: 0L
@@ -696,17 +1033,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val ret = retainedPerNum[item.n] ?: 0L
                         val scaled = item.a.toDouble() * (ret.toDouble() / tot.toDouble())
                         agentCommissionBase += scaled
+                        if (winningNum.isNotEmpty() && item.n == winningNum) {
+                            agentWinRetainedBase += scaled
+                        }
                     }
                 }
             }
             totalCommission += agentCommissionBase * (rate / 100.0)
+            if (winningNum.isNotEmpty() && mult > 0.0) {
+                totalPayout += agentWinRetainedBase * mult
+            }
         }
 
         val commLong = Math.round(totalCommission)
         val retainedNet = (totalRetained - commLong).coerceAtLeast(0L)
 
         val winningRetained = if (winningNum.isNotEmpty()) (retainedPerNum[winningNum] ?: 0L) else 0L
-        val payout = if (defaultMult > 0.0 && winningNum.isNotEmpty()) {
+        val payout = if (totalPayout > 0.0) {
+            Math.round(totalPayout)
+        } else if (defaultMult > 0.0 && winningNum.isNotEmpty()) {
             Math.round(winningRetained * defaultMult)
         } else 0L
 
@@ -733,7 +1078,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    // Requirement 4: Round-by-round (အကြိမ်ရေအလိုက်) net profit/loss calculation for selected date
+    // Round-by-round (အကြိမ်ရေအလိုက်) net profit/loss calculation for selected date
     fun getRoundSummariesForSelectedDate(): List<RoundSettlementSummary> {
         val date = _selectedDate.value
         val sessionNames = (_sessions.value.map { it.name } +
@@ -837,7 +1182,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val payout = if (winNum.isNotEmpty() && agent.mult > 0.0) {
                 Math.round(winBetAmount.toDouble() * agent.mult)
             } else 0L
-            // Net Profit/Loss = Total Bet Amount - (Total Commission + Total Payout)
             val profitLoss = totalBet - (commission + payout)
             Agent2DSettlementItem(
                 agent = agent,
@@ -853,8 +1197,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun commitSettlement(calc: SettledCalculation) {
+        val editing = _editingSettledRecord.value
+        if (editing != null) {
+            val updatedRecord = editing.copy(
+                id = editing.id,
+                date = _selectedDate.value,
+                session = _selectedSession.value.ifBlank { editing.session },
+                winningNumber = calc.winningNumber,
+                totalRetained = calc.totalRetained,
+                commission = calc.commission,
+                retainedNet = calc.retainedNet,
+                payout = calc.payout,
+                profitLoss = calc.profitLoss
+            )
+            manuallyEditedRecordIds.add(editing.id)
+            val updated = _settled.value.map { if (it.id == editing.id) updatedRecord else it }
+            _settled.value = updated
+            repository.updateSettledRecordById(editing.id, updatedRecord)
+            _editingSettledRecord.value = null
+            soundManager.playSave()
+            showToast("စာရင်းချုပ် ပြင်ဆင်ပြီးပါပြီ")
+            return
+        }
+        if (!hasActiveRound) {
+            showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
+            return
+        }
+        val roundKey = "${_selectedDate.value}|${_selectedSession.value}"
+        deletedRoundKeys.remove(roundKey)
         val record = SettledRecord(
-            id = System.currentTimeMillis(),
+            id = System.currentTimeMillis() + (nextSettledIdCounter++),
             date = _selectedDate.value,
             session = _selectedSession.value,
             winningNumber = calc.winningNumber,
@@ -868,94 +1240,322 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val updated = listOf(record) + _settled.value
         _settled.value = updated
         repository.saveSettled(updated)
+        soundManager.playSave()
         showToast("စာရင်းချုပ် သိမ်းဆည်းပြီးပါပြီ")
     }
 
+    /**
+     * Synchronizes active rounds that have bets or a winning number on the selected date into `_settled`
+     * so they appear in the "အကြိမ်ရေအလိုက် အမြတ်ရှုံး တွက်ချက်မှု" table as editable/deletable records,
+     * without recreating deleted records or overwriting manually edited records.
+     */
+    fun syncDailyRecordsFromCurrentDateRounds() {
+        val rounds = getRoundSummariesForSelectedDate()
+        if (rounds.isEmpty()) return
+        var currentList = _settled.value
+        var changed = false
+
+        for (round in rounds) {
+            val roundKey = "${round.date}|${round.session}"
+            if (roundKey in deletedRoundKeys) continue
+
+            val existing = currentList.firstOrNull { it.date == round.date && it.session == round.session }
+            val hasActivity = _vouchers.value.any { it.date == round.date && it.session == round.session } ||
+                _wins.value.any { it.date == round.date && it.session == round.session }
+
+            if (existing != null) {
+                if (existing.id !in manuallyEditedRecordIds && hasActivity) {
+                    if (existing.totalRetained != round.totalBet ||
+                        existing.commission != round.commission ||
+                        existing.retainedNet != round.netAmount ||
+                        existing.payout != round.payout ||
+                        existing.profitLoss != round.profitLoss ||
+                        existing.winningNumber != round.winningNumber
+                    ) {
+                        val updatedRec = existing.copy(
+                            winningNumber = round.winningNumber,
+                            totalRetained = round.totalBet,
+                            commission = round.commission,
+                            retainedNet = round.netAmount,
+                            payout = round.payout,
+                            profitLoss = round.profitLoss
+                        )
+                        currentList = currentList.map { if (it.id == existing.id) updatedRec else it }
+                        changed = true
+                    }
+                }
+            } else if (hasActivity) {
+                val newRec = SettledRecord(
+                    id = System.currentTimeMillis() + (nextSettledIdCounter++),
+                    date = round.date,
+                    session = round.session,
+                    winningNumber = round.winningNumber,
+                    totalRetained = round.totalBet,
+                    commission = round.commission,
+                    retainedNet = round.netAmount,
+                    payout = round.payout,
+                    profitLoss = round.profitLoss,
+                    timestamp = timeFormatter.format(Date())
+                )
+                currentList = currentList + newRec
+                changed = true
+            }
+        }
+
+        if (changed) {
+            _settled.value = currentList
+            repository.saveSettled(currentList)
+        }
+    }
+
+    fun getDailySummaryTotalSales(): Long = _settled.value.sumOf { it.totalRetained }
+
+    fun getDailySummaryTotalPayout(): Long = _settled.value.sumOf { it.payout }
+
+    fun getDailySummaryTotalProfitLoss(): Long = _settled.value.sumOf { it.profitLoss }
+
+    fun getTotalSettledProfitLoss(): Long = _settled.value.sumOf { it.profitLoss }
+
+    fun startEditingSettledRecord(record: SettledRecord, navigateToHome: Boolean = false) {
+        soundManager.playEdit()
+        _editingSettledRecord.value = record
+        _selectedDate.value = record.date
+        if (record.session.isNotBlank()) {
+            _selectedSession.value = record.session
+        }
+        if (navigateToHome) {
+            navigateTo(Screen.HOME)
+        }
+    }
+
+    fun cancelEditingSettledRecord() {
+        _editingSettledRecord.value = null
+        if (_currentScreen.value == Screen.HOME && screenHistory.size > 1) {
+            goBack()
+        }
+    }
+
+    fun saveEditedSettledRecord(
+        date: String? = null,
+        session: String? = null,
+        winningNumber: String? = null,
+        totalRetained: Long? = null,
+        commission: Long? = null,
+        payout: Long? = null
+    ): Boolean {
+        val existing = _editingSettledRecord.value ?: return false
+        val targetDate = date?.trim()?.ifEmpty { existing.date } ?: existing.date
+        val targetSession = session?.trim()?.ifEmpty { existing.session } ?: existing.session
+        val targetWin = winningNumber?.trim() ?: existing.winningNumber
+
+        val hasExplicitAmounts = totalRetained != null || commission != null || payout != null
+        val hasVouchersForTarget = _vouchers.value.any { it.date == targetDate && it.session == targetSession }
+
+        val finalTotalRetained: Long
+        val finalCommission: Long
+        val finalRetainedNet: Long
+        val finalPayout: Long
+        val finalProfitLoss: Long
+
+        if (!hasExplicitAmounts && hasVouchersForTarget) {
+            val calc = calculateSettlementForSession(
+                date = targetDate,
+                session = targetSession,
+                winningNum = targetWin
+            )
+            finalTotalRetained = calc.totalRetained
+            finalCommission = calc.commission
+            finalRetainedNet = calc.retainedNet
+            finalPayout = calc.payout
+            finalProfitLoss = calc.profitLoss
+        } else {
+            finalTotalRetained = (totalRetained ?: existing.totalRetained).coerceAtLeast(0L)
+            finalCommission = (commission ?: existing.commission).coerceAtLeast(0L)
+            finalRetainedNet = (finalTotalRetained - finalCommission).coerceAtLeast(0L)
+            finalPayout = (payout ?: existing.payout).coerceAtLeast(0L)
+            finalProfitLoss = finalTotalRetained - (finalCommission + finalPayout)
+        }
+
+        val updatedRecord = existing.copy(
+            id = existing.id,
+            date = targetDate,
+            session = targetSession,
+            winningNumber = targetWin,
+            totalRetained = finalTotalRetained,
+            commission = finalCommission,
+            retainedNet = finalRetainedNet,
+            payout = finalPayout,
+            profitLoss = finalProfitLoss
+        )
+
+        manuallyEditedRecordIds.add(existing.id)
+        val updatedList = _settled.value.map { if (it.id == existing.id) updatedRecord else it }
+        _settled.value = updatedList
+        repository.updateSettledRecordById(existing.id, updatedRecord)
+        _editingSettledRecord.value = null
+        soundManager.playSave()
+        showToast("စာရင်းချုပ် ပြင်ဆင်ပြီးပါပြီ")
+        if (_currentScreen.value == Screen.HOME && screenHistory.size > 1) {
+            goBack()
+        }
+        return true
+    }
+
+    fun updateSettledRecord(
+        recordId: Long,
+        date: String? = null,
+        session: String? = null,
+        winningNumber: String? = null,
+        totalRetained: Long? = null,
+        commission: Long? = null,
+        payout: Long? = null
+    ): Boolean {
+        val existing = _settled.value.firstOrNull { it.id == recordId } ?: return false
+        val targetDate = date?.trim()?.ifEmpty { existing.date } ?: existing.date
+        val targetSession = session?.trim()?.ifEmpty { existing.session } ?: existing.session
+        val targetWin = winningNumber?.trim() ?: existing.winningNumber
+        val finalTotalRetained = (totalRetained ?: existing.totalRetained).coerceAtLeast(0L)
+        val finalCommission = (commission ?: existing.commission).coerceAtLeast(0L)
+        val finalRetainedNet = (finalTotalRetained - finalCommission).coerceAtLeast(0L)
+        val finalPayout = (payout ?: existing.payout).coerceAtLeast(0L)
+        val finalProfitLoss = finalTotalRetained - (finalCommission + finalPayout)
+
+        val updatedRecord = existing.copy(
+            id = existing.id,
+            date = targetDate,
+            session = targetSession,
+            winningNumber = targetWin,
+            totalRetained = finalTotalRetained,
+            commission = finalCommission,
+            retainedNet = finalRetainedNet,
+            payout = finalPayout,
+            profitLoss = finalProfitLoss
+        )
+        manuallyEditedRecordIds.add(recordId)
+        val updatedList = _settled.value.map { if (it.id == recordId) updatedRecord else it }
+        _settled.value = updatedList
+        repository.updateSettledRecordById(recordId, updatedRecord)
+        soundManager.playSave()
+        showToast("စာရင်းချုပ် ပြင်ဆင်ပြီးပါပြီ")
+        return true
+    }
+
     fun clearSettledLedger() {
+        if (_settled.value.isEmpty()) return
         _settled.value = emptyList()
         repository.saveSettled(emptyList())
+        soundManager.playDelete()
         showToast("စာရင်းချုပ် မှတ်တမ်းများကို ရှင်းထုတ်ပြီးပါပြီ")
     }
 
     fun deleteSettledRecord(recordId: Long) {
+        if (recordId in deletedSettledIds) return
+        val target = _settled.value.firstOrNull { it.id == recordId } ?: return
+        deletedSettledIds.add(recordId)
+        deletedRoundKeys.add("${target.date}|${target.session}")
+        if (_editingSettledRecord.value?.id == recordId) {
+            _editingSettledRecord.value = null
+        }
         val updated = _settled.value.filter { it.id != recordId }
         _settled.value = updated
-        repository.saveSettled(updated)
+        repository.deleteSettledRecordById(recordId)
+        soundManager.playDelete()
         showToast("စာရင်းချုပ်မှတ်တမ်း ဖျက်ပြီးပါပြီ")
     }
 
     // Blocked numbers
     fun addBlockedNumbers(nums: List<String>) {
+        val validNums = nums.map { it.trim() }.filter { it.length == 2 && it.all { c -> c.isDigit() } }
+        if (validNums.isEmpty()) return
         val set = _blocked.value.toMutableSet()
-        set.addAll(nums.filter { it.length == 2 && it.all { c -> c.isDigit() } })
+        set.addAll(validNums)
         _blocked.value = set
         repository.saveBlocked(set)
+        soundManager.playSave()
         showToast("မရဂဏန်းများ ထည့်သွင်းပြီးပါပြီ")
     }
 
     fun editBlockedNumber(oldNum: String, newNum: String) {
+        val cleanNew = newNum.trim()
+        if (cleanNew.length != 2 || !cleanNew.all { it.isDigit() }) return
         val set = _blocked.value.toMutableSet()
         set.remove(oldNum)
-        if (newNum.length == 2 && newNum.all { it.isDigit() }) {
-            set.add(newNum)
-        }
+        set.add(cleanNew)
         _blocked.value = set
         repository.saveBlocked(set)
+        soundManager.playEdit()
         showToast("မရဂဏန်း ပြင်ဆင်ပြီးပါပြီ")
     }
 
     fun removeBlockedNumber(num: String) {
+        if (!_blocked.value.contains(num)) return
         val set = _blocked.value.toMutableSet()
         set.remove(num)
         _blocked.value = set
         repository.saveBlocked(set)
+        soundManager.playDelete()
         showToast("မရဂဏန်း ဖျက်ပြီးပါပြီ")
     }
 
-    // Sessions
-    fun addSession(name: String, rate: Double, mult: Double) {
-        if (_sessions.value.any { it.name.equals(name, ignoreCase = true) }) {
-            showToast("အကြိမ်ရေ အမည် ထပ်နေပါသည်")
-            return
+    // Sessions (Rounds)
+    fun addSession(name: String, rate: Double = 0.0, mult: Double = 0.0): Boolean {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return false
+        if (_sessions.value.any { it.name.equals(trimmed, ignoreCase = true) }) {
+            showToast("အကြိမ် အမည် ထပ်နေပါသည်")
+            return false
         }
-        val updated = _sessions.value + Session(name.trim(), rate, mult)
+        val updated = _sessions.value + Session(trimmed, rate, mult)
         _sessions.value = updated
         repository.saveSessions(updated)
-        if (_selectedSession.value.isEmpty()) {
-            _selectedSession.value = name.trim()
+        if (_selectedSession.value.isEmpty() || !_sessions.value.any { it.name == _selectedSession.value }) {
+            _selectedSession.value = trimmed
         }
-        showToast("အကြိမ်ရေ အသစ် ထည့်ပြီးပါပြီ")
+        soundManager.playSave()
+        showToast("အကြိမ် အသစ် ထည့်ပြီးပါပြီ")
+        return true
     }
 
-    fun updateSession(oldName: String, updatedSession: Session) {
-        val updated = _sessions.value.map { if (it.name == oldName) updatedSession else it }
+    fun updateSession(oldName: String, updatedSession: Session): Boolean {
+        val trimmedName = updatedSession.name.trim()
+        if (trimmedName.isEmpty()) return false
+        if (!oldName.equals(trimmedName, ignoreCase = true) &&
+            _sessions.value.any { it.name.equals(trimmedName, ignoreCase = true) }
+        ) {
+            showToast("အကြိမ် အမည် ထပ်နေပါသည်")
+            return false
+        }
+        val normalized = updatedSession.copy(name = trimmedName)
+        val updated = _sessions.value.map { if (it.name == oldName) normalized else it }
         _sessions.value = updated
         repository.saveSessions(updated)
         if (_selectedSession.value == oldName) {
-            _selectedSession.value = updatedSession.name
+            _selectedSession.value = normalized.name
         }
-        showToast("အကြိမ်ရေ ပြင်ဆင်ပြီးပါပြီ")
+        soundManager.playEdit()
+        showToast("အကြိမ် ပြင်ဆင်ပြီးပါပြီ")
+        return true
     }
 
     fun deleteSession(name: String) {
+        if (_sessions.value.none { it.name == name }) return
         val updated = _sessions.value.filter { it.name != name }
         _sessions.value = updated
         repository.saveSessions(updated)
-        if (_selectedSession.value == name) {
-            _selectedSession.value = updated.firstOrNull()?.name ?: ""
+        if (updated.isEmpty()) {
+            _selectedSession.value = ""
+        } else if (_selectedSession.value == name) {
+            _selectedSession.value = updated.first().name
         }
-        showToast("အကြိမ်ရေ ဖျက်ပြီးပါပြီ")
+        soundManager.playDelete()
+        showToast("အကြိမ် ဖျက်ပြီးပါပြီ")
     }
 
     // Settings
-    fun updateMaxBet(maxBet: Long) {
-        val updated = _settings.value.copy(maxBet = maxBet)
-        _settings.value = updated
-        repository.saveSettings(updated)
-        showToast("အများဆုံးထိုးကြေး ပြင်ဆင်ပြီးပါပြီ")
-    }
-
     fun changePassword(current: String, newPass: String): Boolean {
+        if (current.isBlank() || newPass.isBlank()) {
+            return false
+        }
         if (current != _settings.value.password) {
             showToast("လက်ရှိ စကားဝှက် မှားယွင်းနေပါသည်")
             return false
@@ -967,6 +1567,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val updated = _settings.value.copy(password = newPass)
         _settings.value = updated
         repository.saveSettings(updated)
+        soundManager.playSave()
         showToast("စကားဝှက် အသစ် ပြောင်းလဲပြီးပါပြီ")
         return true
     }
@@ -974,6 +1575,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun resetAllData() {
         repository.resetAllData()
         loadAllData()
+        soundManager.playDelete()
         showToast("အချက်အလက်အားလုံး ပြန်လည်ရှင်းထုတ်ပြီးပါပြီ")
     }
 }

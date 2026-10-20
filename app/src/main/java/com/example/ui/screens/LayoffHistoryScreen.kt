@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,11 +39,17 @@ fun LayoffHistoryScreen(
     val selectedSession by viewModel.selectedSession.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
 
+    val hasRound = sessions.isNotEmpty() && selectedSession.isNotBlank() && sessions.any { it.name == selectedSession }
+
     var selectedDetailRecord by remember { mutableStateOf<LayoffRecord?>(null) }
     var batchToDelete by remember { mutableStateOf<LayoffRecord?>(null) }
     var itemToEdit by remember { mutableStateOf<Pair<Int, LayoffItem>?>(null) }
 
-    val filtered = layoffs.filter { it.date == selectedDate && (selectedSession.isEmpty() || it.session == selectedSession) }
+    val filtered = if (!hasRound) {
+        emptyList()
+    } else {
+        layoffs.filter { it.date == selectedDate && it.session == selectedSession }
+    }
     val grandTotal = filtered.sumOf { it.total }
 
     Column(
@@ -64,6 +71,8 @@ fun LayoffHistoryScreen(
                 .padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            RoundRequiredHelperBanner(visible = !hasRound)
+
             // Header Stats Card
             Card(
                 shape = RoundedCornerShape(10.dp),
@@ -245,6 +254,7 @@ fun LayoffHistoryScreen(
                                         .recordLongPress(
                                             onClick = {},
                                             onLongPress = {
+                                                viewModel.onEditActionStarted()
                                                 itemToEdit = Pair(i, itm)
                                             }
                                         )
@@ -270,13 +280,14 @@ fun LayoffHistoryScreen(
 
         // Action / Edit Layoff Item inside Detail View
         itemToEdit?.let { (idx, itm) ->
-            var newAmountStr by remember { mutableStateOf(itm.a.toString()) }
-            var showItemDeleteConfirm by remember { mutableStateOf(false) }
+            val savedAmtStr = if (itm.a > 0L) itm.a.toString() else ""
+            var newAmountStr by rememberSaveable(itm.n, itm.a) { mutableStateOf(savedAmtStr) }
+            var showItemDeleteConfirm by rememberSaveable { mutableStateOf(false) }
+            val showItemSaveBtn = MainViewModel.shouldShowSaveButton(newAmountStr, savedAmtStr)
 
             if (showItemDeleteConfirm) {
                 DeleteConfirmDialog(
-                    title = "ဖျက်ရန် သေချာပါသလား?",
-                    message = "${itm.n} = ${fmt(itm.a)} ကို ဖျက်ရန် သေချာပါသလား?",
+                    itemName = "${itm.n} = ${fmt(itm.a)}",
                     onDismiss = { showItemDeleteConfirm = false },
                     onConfirm = {
                         selectedDetailRecord?.let { rec ->
@@ -293,42 +304,41 @@ fun LayoffHistoryScreen(
                     containerColor = LuckyCard,
                     shape = RoundedCornerShape(14.dp),
                     title = {
-                        Text("တင်ကွက် ပြင်ဆင်မည် (${itm.n})", color = LuckyTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("တင်ကွက် ပြင်မည် (${itm.n})", color = LuckyTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     },
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            OutlinedTextField(
+                            AppOutlinedTextField(
                                 value = newAmountStr,
                                 onValueChange = { newAmountStr = it.filter { c -> c.isDigit() } },
-                                label = { Text("ပမာဏ", color = LuckyTextSecondary) },
+                                label = { Text("ပမာဏ") },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = LuckyHeader,
-                                    unfocusedBorderColor = LuckyBorder,
-                                    focusedTextColor = LuckyTextPrimary,
-                                    unfocusedTextColor = LuckyTextPrimary
-                                )
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .soundOnInputFocus()
                             )
                         }
                     },
                     confirmButton = {
-                        Button(
-                            onClick = {
-                                val amt = newAmountStr.toLongOrNull() ?: 0L
-                                if (amt <= 0) {
-                                    viewModel.showToast("ပမာဏ မှားယွင်းနေပါသည်")
-                                    return@Button
-                                }
-                                selectedDetailRecord?.let { rec ->
-                                    viewModel.editLayoffItem(rec.id, idx, amt)
-                                    selectedDetailRecord = viewModel.layoffs.value.firstOrNull { it.id == rec.id }
-                                }
-                                itemToEdit = null
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White)
-                        ) {
-                            Text("သိမ်းမည်", fontWeight = FontWeight.Bold)
+                        androidx.compose.animation.AnimatedVisibility(visible = showItemSaveBtn) {
+                            Button(
+                                onClick = {
+                                    val amt = MainViewModel.parseAmountOrZero(newAmountStr)
+                                    if (amt <= 0) {
+                                        viewModel.showToast("ပမာဏ မှားယွင်းနေပါသည်")
+                                        return@Button
+                                    }
+                                    selectedDetailRecord?.let { rec ->
+                                        viewModel.editLayoffItem(rec.id, idx, amt)
+                                        selectedDetailRecord = viewModel.layoffs.value.firstOrNull { it.id == rec.id }
+                                    }
+                                    itemToEdit = null
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White)
+                            ) {
+                                Text("သိမ်းမည်", fontWeight = FontWeight.Bold)
+                            }
                         }
                     },
                     dismissButton = {

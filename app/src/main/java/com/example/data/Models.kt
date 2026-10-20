@@ -1,21 +1,26 @@
 package com.example.data
 
+import java.util.concurrent.atomic.AtomicLong
+
+private val betItemIdCounter = AtomicLong(1000L)
+
 data class Agent(
     val id: Int,
     val name: String,
-    val rate: Double = 15.0,  // Commission % (e.g. 15%)
-    val mult: Double = 80.0   // Multiplier (e.g. 80x)
+    val rate: Double = 0.0,
+    val mult: Double = 0.0
 )
 
 data class Session(
     val name: String,
-    val rate: Double = 15.0,
-    val mult: Double = 80.0
+    val rate: Double = 0.0,
+    val mult: Double = 0.0
 )
 
 data class BetItem(
     val n: String,
-    val a: Long
+    val a: Long,
+    val id: Long = betItemIdCounter.incrementAndGet()
 )
 
 data class Voucher(
@@ -67,9 +72,9 @@ data class SettledRecord(
 )
 
 data class AppSettings(
-    val maxBet: Long = 9999999L,
     val password: String = "1234",
-    val brakeLimit: Long = 50000L
+    val brakeLimit: Long = 0L,
+    val soundEnabled: Boolean = true
 )
 
 data class AgentSummaryData(
@@ -79,4 +84,3 @@ data class AgentSummaryData(
     val voucherCount: Int,
     val payout: Long
 )
-
