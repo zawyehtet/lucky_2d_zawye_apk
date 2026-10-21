@@ -399,7 +399,7 @@ class ExampleRobolectricTest {
         viewModel.resetAllData()
 
         // Verify Daily Summary string resources
-        assertEquals("ရက်ချုပ်/အမြတ်ရှုံး", context.getString(R.string.daily_summary_page_title))
+        assertEquals("ရက်ချုပ်အားလုံး", context.getString(R.string.daily_summary_page_title))
         assertEquals("အကြိမ်ရေအလိုက် အမြတ်ရှုံး တွက်ချက်မှု", context.getString(R.string.daily_round_table_title))
         assertEquals("စုစုပေါင်း စာရင်းချုပ်", context.getString(R.string.daily_summary_totals_title))
         assertEquals("ရောင်းရငွေ", context.getString(R.string.daily_total_sales_label))
@@ -567,10 +567,10 @@ class ExampleRobolectricTest {
         val viewModel = MainViewModel(app)
         viewModel.resetAllData()
 
-        // Standardized screen titles and 3-column Daily Ledger strings
+        // Standardized screen titles and Daily Ledger strings
         assertEquals("ဂဏန်းများ", context.getString(R.string.numbers_screen_title))
-        assertEquals("2D စာရင်းချုပ်", context.getString(R.string.winning_summary_title_2d))
-        assertEquals("စာရင်းချုပ်", context.getString(R.string.daily_ledger_title))
+        assertEquals("ကော်မရှင်တနေ့သာစာရင်း", context.getString(R.string.winning_summary_title_2d))
+        assertEquals("ရက်ချုပ်အားလုံး", context.getString(R.string.daily_ledger_title))
         assertEquals("ရက်စွဲ", context.getString(R.string.col_date))
         assertEquals("အကြိမ်", context.getString(R.string.col_round))
         assertEquals("အရှုံး/မြတ်", context.getString(R.string.col_loss_profit))
@@ -583,7 +583,7 @@ class ExampleRobolectricTest {
         assertTrue(viewModel.goBack())
         assertEquals(Screen.HOME, viewModel.currentScreen.value)
 
-        // Verify Bottom Nav ရက်ချုပ်, 3-column Numbers header အမှတ်စဉ်, and Home footer branding strings
+        // Verify 3-column Numbers header အမှတ်စဉ် and Home footer branding strings
         assertEquals("ရက်ချုပ်", context.getString(R.string.nav_daily_summary))
         assertEquals("အမှတ်စဉ်", context.getString(R.string.col_serial_no))
         assertEquals("Power by Lcky2d3d ShweKhinMyay", context.getString(R.string.home_footer_branding))
@@ -603,6 +603,13 @@ class ExampleRobolectricTest {
         assertEquals(12000L, viewModel.getWinningNumberBetAmountForCurrentSession("47"))
         // Kept amount within configured brake limit (5000) on Brake screen is 5000
         assertEquals(5000L, viewModel.getKeptWinningAmountForBrake("47"))
+
+        // Lock and save Brake settlement -> navigates to ရက်ချုပ်အားလုံး (Screen.SETTLEMENT) and exports CSV/TXT
+        viewModel.lockAndSaveBrakeSettlement()
+        assertEquals(Screen.SETTLEMENT, viewModel.currentScreen.value)
+        val exportedCsv = viewModel.exportDailySettlementsToFile(context)
+        assertTrue(exportedCsv.exists())
+        assertTrue(exportedCsv.readText().contains("မနက်ပိုင်း"))
     }
 }
 

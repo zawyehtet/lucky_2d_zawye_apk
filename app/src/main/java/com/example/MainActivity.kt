@@ -79,28 +79,15 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    val showBottomBar = currentScreen != Screen.HOME &&
-                        currentScreen != Screen.NUMBER_ENTRY
-
                     Scaffold(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(LuckyBg),
-                        bottomBar = {
-                            if (showBottomBar) {
-                                LuckyBottomNav(
-                                    currentScreen = currentScreen,
-                                    onSelectScreen = { screen ->
-                                        viewModel.navigateTo(screen)
-                                    }
-                                )
-                            }
-                        }
+                            .background(LuckyBg)
                     ) { innerPadding ->
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(bottom = if (showBottomBar) innerPadding.calculateBottomPadding() else 0.dp)
+                                .padding(bottom = innerPadding.calculateBottomPadding())
                         ) {
                             Crossfade(targetState = currentScreen, label = "ScreenTransition") { screen ->
                                 when (screen) {
@@ -131,116 +118,3 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable
-fun LuckyBottomNav(
-    currentScreen: Screen,
-    onSelectScreen: (Screen) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        color = LuckyCard,
-        shadowElevation = 8.dp,
-        modifier = modifier
-            .fillMaxWidth()
-            .border(width = 1.dp, color = LuckyBorder)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .height(60.dp)
-                .padding(horizontal = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            BottomNavItem(
-                label = "ရက်ချုပ်",
-                icon = Icons.Default.Assignment,
-                isSelected = currentScreen == Screen.SETTLEMENT,
-                testTag = "nav_settlement",
-                modifier = Modifier.weight(1f),
-                onClick = { onSelectScreen(Screen.SETTLEMENT) }
-            )
-
-            BottomNavItem(
-                label = "ကော်မရှင်",
-                icon = Icons.Default.People,
-                isSelected = currentScreen == Screen.AGENTS,
-                testTag = "nav_agents",
-                modifier = Modifier.weight(1f),
-                onClick = { onSelectScreen(Screen.AGENTS) }
-            )
-
-            BottomNavItem(
-                label = "ဂဏန်းများ",
-                icon = Icons.Default.GridView,
-                isSelected = currentScreen == Screen.NUMBERS,
-                testTag = "nav_numbers",
-                modifier = Modifier.weight(1f),
-                onClick = { onSelectScreen(Screen.NUMBERS) }
-            )
-
-            BottomNavItem(
-                label = "ဘောင်ချာ",
-                icon = Icons.Default.Receipt,
-                isSelected = currentScreen == Screen.VOUCHERS,
-                testTag = "nav_vouchers",
-                modifier = Modifier.weight(1f),
-                onClick = { onSelectScreen(Screen.VOUCHERS) }
-            )
-
-            BottomNavItem(
-                label = "တင်ကွက်",
-                icon = Icons.Default.AddCircleOutline,
-                isSelected = currentScreen == Screen.BRAKE || currentScreen == Screen.LAYOFF_HISTORY,
-                testTag = "nav_brake",
-                modifier = Modifier.weight(1f),
-                onClick = { onSelectScreen(Screen.BRAKE) }
-            )
-
-            BottomNavItem(
-                label = "ဆက်တင်",
-                icon = Icons.Default.Settings,
-                isSelected = currentScreen == Screen.SETTINGS,
-                testTag = "nav_settings",
-                modifier = Modifier.weight(1f),
-                onClick = { onSelectScreen(Screen.SETTINGS) }
-            )
-        }
-    }
-}
-
-@Composable
-fun BottomNavItem(
-    label: String,
-    icon: ImageVector,
-    isSelected: Boolean,
-    testTag: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier = modifier
-            .fillMaxHeight()
-            .clickable(onClick = onClick)
-            .testTag(testTag)
-            .padding(vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = if (isSelected) LuckyHeader else LuckyTextMuted,
-            modifier = Modifier.size(22.dp)
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = label,
-            color = if (isSelected) LuckyHeader else LuckyTextMuted,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-            fontSize = 10.sp,
-            maxLines = 1
-        )
-    }
-}

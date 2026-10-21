@@ -56,6 +56,7 @@ fun VouchersScreen(
     val hasRound = sessions.isNotEmpty() && selectedSession.isNotBlank() && sessions.any { it.name == selectedSession }
     val noRoundsText = stringResource(R.string.no_rounds_yet)
 
+    val filterAgent by viewModel.selectedVoucherFilterAgent.collectAsState()
     var searchQuery by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
 
@@ -70,6 +71,7 @@ fun VouchersScreen(
     } else {
         vouchers.filter { v ->
             v.date == selectedDate && v.session == selectedSession &&
+                (filterAgent == "ALL" || v.agent == filterAgent) &&
                 (searchQuery.isBlank() ||
                     v.agent.contains(searchQuery, ignoreCase = true) ||
                     v.no.toString() == searchQuery.trim() ||
@@ -80,11 +82,18 @@ fun VouchersScreen(
     Box(modifier = modifier.fillMaxSize().background(LuckyBg)) {
         Column(modifier = Modifier.fillMaxSize()) {
             AppHeader(
-                title = stringResource(R.string.vouchers_screen_title),
+                title = if (filterAgent == "ALL") {
+                    stringResource(R.string.vouchers_screen_title)
+                } else {
+                    "${stringResource(R.string.vouchers_screen_title)} ($filterAgent)"
+                },
                 selectedSession = selectedSession,
                 sessions = sessions,
                 onSessionSelected = { viewModel.setSession(it) },
-                onBack = { viewModel.goBack() }
+                onBack = {
+                    viewModel.setVoucherFilterAgent("ALL")
+                    viewModel.goBack()
+                }
             )
 
             Column(

@@ -22,9 +22,9 @@ val LuckyWarning = Color(0xFFF57C00)      // Highlight / Winning badge orange
 
 // Borders & Typography Colors
 val LuckyBorder = Color(0xFFCBD5E1)       // Clean table & card border lines
-val LuckyTextPrimary = Color(0xFF111827)  // High-contrast near-black text
-val LuckyTextSecondary = Color(0xFF4B5563)// Readable dark gray secondary text
-val LuckyTextMuted = Color(0xFF6B7280)    // Muted label gray
+val LuckyTextPrimary = Color(0xFF111111)  // High-contrast black text on white surfaces
+val LuckyTextSecondary = Color(0xFF1F2937)// Sharp dark text
+val LuckyTextMuted = Color(0xFF4B5563)    // Readable dark label gray
 
 // Clover / Brand Icon Colors (#235347 background & #FFFFFF foreground)
 val CloverDarkGreen = Color(0xFF235347)

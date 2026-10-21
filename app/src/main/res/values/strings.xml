@@ -61,17 +61,17 @@
     <string name="setting_date_round_title">အလုပ်လုပ်မည့် ရက်စွဲနှင့် အကြိမ်</string>
     <string name="dialog_date_round_title">ရက်စွဲနှင့် အကြိမ် ရွေးချယ်ရန်</string>
     <string name="dialog_select_round_subtitle">အကြိမ် ရွေးချယ်ပါ</string>
-    <string name="winning_summary_title_2d">2D စာရင်းချုပ်</string>
+    <string name="winning_summary_title_2d">ကော်မရှင်တနေ့သာစာရင်း</string>
     <string name="winning_summary_label">ပေါက်သီး</string>
     <string name="winning_summary_equals">=</string>
     <string name="winning_summary_no_winner">-</string>
     <string name="winning_summary_header_format">ပေါက်သီး %1$s=%2$s</string>
     <string name="winning_summary_round_caption">အကြိမ် : %1$s</string>
     <string name="action_view_winning_number">ထွက်ဂဏန်း ကြည့်ရန်</string>
-    <string name="winning_row_content_desc">ထွက်ဂဏန်း %1$s၊ နှိပ်ပြီး 2D စာရင်းချုပ် ကြည့်ရန်</string>
+    <string name="winning_row_content_desc">ထွက်ဂဏန်း %1$s၊ နှိပ်ပြီး ကော်မရှင်တနေ့သာစာရင်း ကြည့်ရန်</string>
     <string name="numbers_screen_title">ဂဏန်းများ</string>
-    <string name="daily_summary_page_title">ရက်ချုပ်/အမြတ်ရှုံး</string>
-    <string name="daily_ledger_title">စာရင်းချုပ်</string>
+    <string name="daily_summary_page_title">ရက်ချုပ်အားလုံး</string>
+    <string name="daily_ledger_title">ရက်ချုပ်အားလုံး</string>
     <string name="daily_round_table_title">အကြိမ်ရေအလိုက် အမြတ်ရှုံး တွက်ချက်မှု</string>
     <string name="daily_summary_totals_title">စုစုပေါင်း စာရင်းချုပ်</string>
     <string name="daily_total_sales_label">ရောင်းရငွေ</string>

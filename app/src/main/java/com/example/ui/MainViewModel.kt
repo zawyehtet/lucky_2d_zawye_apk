@@ -286,6 +286,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _currentScreen.value = screen
     }
 
+    private val _selectedVoucherFilterAgent = MutableStateFlow("ALL")
+    val selectedVoucherFilterAgent: StateFlow<String> = _selectedVoucherFilterAgent.asStateFlow()
+
+    fun setVoucherFilterAgent(agentName: String) {
+        _selectedVoucherFilterAgent.value = agentName
+    }
+
+    fun openAgentVouchers(agentName: String) {
+        _selectedVoucherFilterAgent.value = agentName
+        navigateTo(Screen.VOUCHERS)
+    }
+
     fun getBackStack(): List<Screen> = screenHistory.toList()
 
     fun openNumbersFromWinningNumber() {
@@ -1019,12 +1031,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+        val activeBrakeLimit = if (_currentBrakeInput.value.isNotBlank()) {
+            parseAmountOrZero(_currentBrakeInput.value)
+        } else {
+            _settings.value.brakeLimit
+        }
+
         val retainedPerNum = mutableMapOf<String, Long>()
         for (i in 0..99) {
             val numStr = "%02d".format(i)
             val tot = totalPerNum[numStr] ?: 0L
             val lay = layoffPerNum[numStr] ?: 0L
-            retainedPerNum[numStr] = (tot - lay).coerceAtLeast(0L)
+            val netHeld = (tot - lay).coerceAtLeast(0L)
+            retainedPerNum[numStr] = if (activeBrakeLimit > 0L) minOf(netHeld, activeBrakeLimit) else netHeld
         }
 
         val totalRetained = retainedPerNum.values.sum()
@@ -1260,10 +1279,82 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             timestamp = timeFormatter.format(Date())
         )
         val updated = listOf(record) + _settled.value
+        manuallyEditedRecordIds.add(record.id)
         _settled.value = updated
         repository.saveSettled(updated)
         soundManager.playSave()
         showToast("စာရင်းချုပ် သိမ်းဆည်းပြီးပါပြီ")
+    }
+
+    fun getLockedSettledRecordForCurrentSession(): SettledRecord? {
+        val date = _selectedDate.value
+        val sess = _selectedSession.value
+        return _settled.value.firstOrNull {
+            it.date == date && it.session == sess && it.id in manuallyEditedRecordIds
+        }
+    }
+
+    /**
+     * Locks and saves the current round's settlement from the Brake ("တင်ကွက်များ") screen as an immutable
+     * record in Room DB, then navigates directly to "ရက်ချုပ်အားလုံး" (Screen.SETTLEMENT).
+     */
+    fun lockAndSaveBrakeSettlement() {
+        if (!hasActiveRound) {
+            showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
+            return
+        }
+        val date = _selectedDate.value
+        val sess = _selectedSession.value
+        val roundKey = "$date|$sess"
+        deletedRoundKeys.remove(roundKey)
+
+        val existingLocked = getLockedSettledRecordForCurrentSession()
+        if (existingLocked != null) {
+            soundManager.playSave()
+            showToast("ရက်ချုပ် စာရင်း သိမ်းဆည်းပြီးပါပြီ")
+            navigateTo(Screen.SETTLEMENT)
+            return
+        }
+
+        val winNum = getWinningNumberForCurrentSession()
+        val calc = calculateSettlementForSession(date = date, session = sess, winningNum = winNum)
+        val existingAny = _settled.value.firstOrNull { it.date == date && it.session == sess }
+
+        if (existingAny != null) {
+            val lockedRec = existingAny.copy(
+                winningNumber = calc.winningNumber,
+                totalRetained = calc.totalRetained,
+                commission = calc.commission,
+                retainedNet = calc.retainedNet,
+                payout = calc.payout,
+                profitLoss = calc.profitLoss
+            )
+            manuallyEditedRecordIds.add(lockedRec.id)
+            val updated = _settled.value.map { if (it.id == existingAny.id) lockedRec else it }
+            _settled.value = updated
+            repository.saveSettled(updated)
+        } else {
+            val newRec = SettledRecord(
+                id = System.currentTimeMillis() + (nextSettledIdCounter++),
+                date = date,
+                session = sess,
+                winningNumber = calc.winningNumber,
+                totalRetained = calc.totalRetained,
+                commission = calc.commission,
+                retainedNet = calc.retainedNet,
+                payout = calc.payout,
+                profitLoss = calc.profitLoss,
+                timestamp = timeFormatter.format(Date())
+            )
+            manuallyEditedRecordIds.add(newRec.id)
+            val updated = listOf(newRec) + _settled.value
+            _settled.value = updated
+            repository.saveSettled(updated)
+        }
+
+        soundManager.playSave()
+        showToast("ရက်ချုပ် စာရင်း သိမ်းဆည်းပြီးပါပြီ")
+        navigateTo(Screen.SETTLEMENT)
     }
 
     /**
@@ -1463,11 +1554,71 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearSettledLedger() {
-        if (_settled.value.isEmpty()) return
+        _settled.value.forEach { rec ->
+            deletedRoundKeys.add("${rec.date}|${rec.session}")
+        }
+        val rounds = getRoundSummariesForSelectedDate()
+        rounds.forEach { r ->
+            deletedRoundKeys.add("${r.date}|${r.session}")
+        }
         _settled.value = emptyList()
         repository.saveSettled(emptyList())
         soundManager.playDelete()
         showToast("စာရင်းချုပ် မှတ်တမ်းများကို ရှင်းထုတ်ပြီးပါပြီ")
+    }
+
+    /**
+     * Generates both TXT and CSV summaries of all daily settlements ("ရက်ချုပ်အားလုံး")
+     * for local storage access and returns the generated CSV file.
+     */
+    fun exportDailySettlementsToFile(context: android.content.Context): java.io.File {
+        val records = _settled.value
+        val totalProfitLoss = records.sumOf { it.profitLoss }
+        val signedGrandTotal = when {
+            totalProfitLoss > 0L -> "+$totalProfitLoss"
+            totalProfitLoss < 0L -> "$totalProfitLoss"
+            else -> "0"
+        }
+
+        val csvContent = buildString {
+            appendLine("စဉ်,ရက်စွဲ,အပိုင်း,ပေါက်သီး,အမြတ်ငွေ")
+            records.forEachIndexed { idx, rec ->
+                val signedPl = when {
+                    rec.profitLoss > 0L -> "+${rec.profitLoss}"
+                    rec.profitLoss < 0L -> "${rec.profitLoss}"
+                    else -> "0"
+                }
+                appendLine("${idx + 1},${rec.date},${rec.session},${rec.winningNumber.ifEmpty { "-" }},$signedPl")
+            }
+            appendLine("စုစုပေါင်းစာရင်းချုပ်,,,,$signedGrandTotal")
+        }
+
+        val txtContent = buildString {
+            appendLine("ရက်ချုပ်အားလုံး")
+            appendLine("----------------------------------------")
+            appendLine("စဉ် | ရက်စွဲ | အပိုင်း | အမြတ်ငွေ")
+            appendLine("----------------------------------------")
+            records.forEachIndexed { idx, rec ->
+                val signedPl = when {
+                    rec.profitLoss > 0L -> "+${rec.profitLoss}"
+                    rec.profitLoss < 0L -> "${rec.profitLoss}"
+                    else -> "0"
+                }
+                appendLine("${idx + 1} | ${rec.date} | ${rec.session} | $signedPl")
+            }
+            appendLine("----------------------------------------")
+            appendLine("စုစုပေါင်းစာရင်းချုပ် = $signedGrandTotal")
+        }
+
+        val exportDir = context.getExternalFilesDir(null) ?: context.filesDir
+        exportDir.mkdirs()
+        val csvFile = java.io.File(exportDir, "daily_settlements_summary.csv")
+        val txtFile = java.io.File(exportDir, "daily_settlements_summary.txt")
+        csvFile.writeText(csvContent, Charsets.UTF_8)
+        txtFile.writeText(txtContent, Charsets.UTF_8)
+        soundManager.playSave()
+        showToast("ဖိုင်သိမ်းပြီးပါပြီ: ${csvFile.name}")
+        return csvFile
     }
 
     fun deleteSettledRecord(recordId: Long) {

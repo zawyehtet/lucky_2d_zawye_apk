@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -29,9 +30,10 @@ import com.example.ui.Screen
 import com.example.ui.components.AppHeader
 import com.example.ui.components.AppOutlinedTextField
 import com.example.ui.components.RoundRequiredHelperBanner
-import com.example.ui.components.soundOnInputFocus
 import com.example.ui.components.fmt
+import com.example.ui.components.soundOnInputFocus
 import com.example.ui.theme.*
+import kotlin.math.abs
 
 @Composable
 fun BrakeScreen(
@@ -47,6 +49,8 @@ fun BrakeScreen(
     val vouchers by viewModel.vouchers.collectAsState()
     val layoffs by viewModel.layoffs.collectAsState()
     val wins by viewModel.wins.collectAsState()
+    val settledRecords by viewModel.settled.collectAsState()
+    val agents by viewModel.agents.collectAsState()
 
     val hasRound = sessions.isNotEmpty() && selectedSession.isNotBlank() && sessions.any { it.name == selectedSession }
     val noRoundsText = stringResource(R.string.no_rounds_yet)
@@ -71,37 +75,64 @@ fun BrakeScreen(
     val showBrakeSaveBtn = hasRound && MainViewModel.shouldShowSaveButton(currentBrakeInput, lastSavedBrakeText)
 
     val limit = MainViewModel.parseAmountOrZero(currentBrakeInput)
+    val activeBrake = if (currentBrakeInput.isNotBlank()) limit else settings.brakeLimit
+
     val summaries = remember(vouchers, layoffs, selectedDate, selectedSession) {
         viewModel.getAggregatedNumbers()
     }
 
+    // Immutability check: if this round's settlement was locked/saved, reuse its locked figures
+    val lockedRecord = remember(settledRecords, selectedDate, selectedSession) {
+        viewModel.getLockedSettledRecordForCurrentSession()
+    }
+
     // Amount kept within the configured brake limit (မိမိလက်ခံသော/ဘရိတ်အတွင်း ပေါက်သီးပမာဏ)
-    val keptWinningAmount = remember(summaries, formattedWinNum, hasValidWinNum, limit, currentBrakeInput, settings.brakeLimit) {
+    val keptWinningAmount = remember(summaries, formattedWinNum, hasValidWinNum, activeBrake) {
         if (hasValidWinNum) {
             val winSummary = summaries.firstOrNull { it.n == formattedWinNum }
-            val activeBrake = if (currentBrakeInput.isNotBlank()) limit else settings.brakeLimit
             if (winSummary != null) {
                 if (activeBrake > 0L) minOf(winSummary.netAmount, activeBrake) else winSummary.netAmount
             } else 0L
         } else 0L
     }
-    val winningEntryCount = remember(summaries, formattedWinNum, hasValidWinNum) {
-        if (hasValidWinNum) summaries.firstOrNull { it.n == formattedWinNum }?.entryCount ?: 0 else 0
+
+    val leftRetainedList = remember(summaries, activeBrake) {
+        summaries.map { summary ->
+            val retained = if (activeBrake > 0L) minOf(summary.netAmount, activeBrake) else summary.netAmount
+            Triple(summary.n, summary.entryCount, retained)
+        }.filter { it.third > 0L }
     }
 
-    val leftRetainedList = summaries.map { summary ->
-        val retained = minOf(summary.netAmount, limit)
-        Triple(summary.n, summary.entryCount, retained)
-    }.filter { it.third > 0 }
-
-    val rightLayoffList = summaries.mapNotNull { summary ->
-        if (summary.netAmount > limit) {
-            Triple(summary.n, summary.entryCount, summary.netAmount - limit)
-        } else null
+    val rightLayoffList = remember(summaries, activeBrake) {
+        if (activeBrake > 0L) {
+            summaries.mapNotNull { summary ->
+                if (summary.netAmount > activeBrake) {
+                    Triple(summary.n, summary.entryCount, summary.netAmount - activeBrake)
+                } else null
+            }
+        } else {
+            emptyList()
+        }
     }
 
-    val totalRetained = leftRetainedList.sumOf { it.third }
+    val liveCalc = remember(vouchers, layoffs, agents, sessions, selectedDate, selectedSession, formattedWinNum, hasValidWinNum, currentBrakeInput, settings.brakeLimit) {
+        viewModel.calculateSettlementForSession(
+            date = selectedDate,
+            session = selectedSession,
+            winningNum = if (hasValidWinNum) formattedWinNum else ""
+        )
+    }
+
+    val totalRetained = lockedRecord?.totalRetained ?: leftRetainedList.sumOf { it.third }
     val totalLayoff = rightLayoffList.sumOf { it.third }
+
+    val ledgerSales = lockedRecord?.totalRetained ?: liveCalc.totalRetained
+    val ledgerComm = lockedRecord?.commission ?: liveCalc.commission
+    val ledgerNet = lockedRecord?.retainedNet ?: liveCalc.retainedNet
+    val ledgerPayout = lockedRecord?.payout ?: liveCalc.payout
+    val ledgerProfitLoss = lockedRecord?.profitLoss ?: liveCalc.profitLoss
+
+    val orangeHeaderBg = Color(0xFFF57C00)
 
     Box(modifier = modifier.fillMaxSize().background(LuckyBg)) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -113,12 +144,12 @@ fun BrakeScreen(
                 onBack = { viewModel.goBack() }
             )
 
-            // Header input "ဘရိတ်", date and session
+            // Header section: "ဘရိတ် : [Amount]", Date, "အပိုင်း : [Session]", and Post-Draw Winning Number box
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 RoundRequiredHelperBanner(visible = !hasRound)
 
@@ -127,18 +158,52 @@ fun BrakeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "နေ့စွဲ : $selectedDate",
-                        color = LuckyTextSecondary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = "${stringResource(R.string.round_label)} : ${if (hasRound) selectedSession else noRoundsText}",
-                        color = LuckyHeader,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column {
+                        Text(
+                            text = "နေ့စွဲ : $selectedDate",
+                            color = LuckyTextPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "ဘရိတ် : ${fmt(activeBrake)}",
+                            color = LuckyHeader,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "အပိုင်း : ${if (hasRound) selectedSession else noRoundsText}",
+                            color = LuckyTextPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        // Post-Draw State: prominent winning number box right next to "အပိုင်း : [Session]"
+                        if (hasValidWinNum) {
+                            Surface(
+                                color = Color(0xFFFFF59D),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier
+                                    .border(1.5.dp, LuckyDanger, RoundedCornerShape(6.dp))
+                                    .testTag("brake_header_winning_box")
+                            ) {
+                                Text(
+                                    text = formattedWinNum,
+                                    color = LuckyDanger,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 16.sp,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
                 }
 
                 Row(
@@ -181,7 +246,7 @@ fun BrakeScreen(
                 }
             }
 
-            // Full-Width Split Table Card
+            // 2-Column Split Table Card
             Card(
                 shape = RoundedCornerShape(10.dp),
                 colors = CardDefaults.cardColors(containerColor = LuckyCard),
@@ -192,12 +257,12 @@ fun BrakeScreen(
                     .border(1.dp, LuckyBorder, RoundedCornerShape(10.dp))
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    // Split Headers
+                    // Yellow/Orange Split Headers: လက်ခံကွက် | တင်ကွက်
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(LuckyHeader)
-                            .padding(vertical = 10.dp),
+                            .background(orangeHeaderBg)
+                            .padding(vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -205,18 +270,18 @@ fun BrakeScreen(
                             text = "လက်ခံကွက် (${leftRetainedList.size})",
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
+                            fontSize = 14.sp,
                             textAlign = TextAlign.Center,
                             maxLines = 1,
                             softWrap = false,
                             modifier = Modifier.weight(1f)
                         )
-                        Box(modifier = Modifier.width(1.dp).height(20.dp).background(Color.White.copy(alpha = 0.5f)))
+                        Box(modifier = Modifier.width(1.dp).height(20.dp).background(Color.White.copy(alpha = 0.6f)))
                         Text(
                             text = "တင်ကွက် (${rightLayoffList.size})",
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
+                            fontSize = 14.sp,
                             textAlign = TextAlign.Center,
                             maxLines = 1,
                             softWrap = false,
@@ -224,40 +289,37 @@ fun BrakeScreen(
                         )
                     }
 
-                    // Split Subheaders (ဂဏန်း | အကြိမ် | ပမာဏ)
+                    // Balanced Subheaders: Left "ဂဏန်းများ | ပမာဏ" and Right "ဂဏန်းများ | ပမာဏ"
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(LuckyCardDark)
-                            .padding(vertical = 6.dp)
+                            .background(LuckyHeader)
+                            .padding(vertical = 7.dp)
                     ) {
                         Row(
-                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                            modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("ဂဏန်း", color = LuckyTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                            Text("အကြိမ်", color = LuckyTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                            Text("ပမာဏ", color = LuckyTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                            Text("ဂဏန်းများ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                            Text("ပမာဏ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                         }
-                        Box(modifier = Modifier.width(1.dp).height(16.dp).background(LuckyBorder))
+                        Box(modifier = Modifier.width(1.dp).height(18.dp).background(Color.White.copy(alpha = 0.4f)))
                         Row(
-                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                            modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("ဂဏန်း", color = LuckyTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                            Text("အကြိမ်", color = LuckyTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                            Text("ပမာဏ", color = LuckyTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                            Text("ဂဏန်းများ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                            Text("ပမာဏ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                         }
                     }
                     HorizontalDivider(color = LuckyBorder)
 
-                    // Split Body Content
+                    // Split Body Content (Left Column vs Right Column)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
                     ) {
-                        // Left List: Retained (လက်ခံကွက်)
                         val regularLeftRetainedList = remember(leftRetainedList, formattedWinNum, hasValidWinNum) {
                             if (hasValidWinNum) {
                                 leftRetainedList.filter { it.first != formattedWinNum }
@@ -266,100 +328,195 @@ fun BrakeScreen(
                             }
                         }
 
-                        LazyColumn(
+                        // LEFT COLUMN: လက်ခံကွက် + Post-Draw Single-Round Summary Ledger + Left Footer
+                        Column(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
                         ) {
-                            // Top Winning Number Row in "လက်ခံကွက်" (Kept Bets) Column
-                            if (hasValidWinNum) {
-                                item(key = "kept_winning_number_top_row") {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .background(Color(0xFFFEE2E2))
-                                            .border(1.5.dp, Color(0xFFEF4444))
-                                            .padding(vertical = 8.dp, horizontal = 8.dp)
-                                            .testTag("brake_kept_winning_row"),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                            ) {
+                                // Pinned Winning Number Row in "လက်ခံကွက်" highlighted in Yellow/Red background with retained amount within brake limit
+                                if (hasValidWinNum) {
+                                    item(key = "kept_winning_number_top_row") {
                                         Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(Color(0xFFFFF59D))
+                                                .border(1.5.dp, Color(0xFFEF4444))
+                                                .padding(vertical = 8.dp, horizontal = 10.dp)
+                                                .testTag("brake_kept_winning_row"),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(
-                                                text = formattedWinNum,
-                                                color = Color(0xFFDC2626),
-                                                fontWeight = FontWeight.ExtraBold,
-                                                fontSize = 15.sp,
-                                                maxLines = 1,
-                                                softWrap = false,
-                                                modifier = Modifier.testTag("brake_kept_winning_number")
-                                            )
-                                            Surface(
-                                                color = Color(0xFFEF4444),
-                                                shape = RoundedCornerShape(4.dp)
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                                             ) {
                                                 Text(
-                                                    text = stringResource(R.string.winning_summary_label),
-                                                    color = Color.White,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 9.sp,
+                                                    text = formattedWinNum,
+                                                    color = Color(0xFFDC2626),
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    fontSize = 15.sp,
                                                     maxLines = 1,
                                                     softWrap = false,
-                                                    modifier = Modifier
-                                                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                                                        .testTag("brake_kept_winning_badge")
+                                                    modifier = Modifier.testTag("brake_kept_winning_number")
                                                 )
+                                                Surface(
+                                                    color = Color(0xFFEF4444),
+                                                    shape = RoundedCornerShape(4.dp)
+                                                ) {
+                                                    Text(
+                                                        text = stringResource(R.string.winning_summary_label),
+                                                        color = Color.White,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 9.sp,
+                                                        maxLines = 1,
+                                                        softWrap = false,
+                                                        modifier = Modifier
+                                                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                            .testTag("brake_kept_winning_badge")
+                                                    )
+                                                }
                                             }
+                                            Text(
+                                                text = fmt(keptWinningAmount),
+                                                color = Color(0xFFDC2626),
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 14.sp,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                modifier = Modifier.testTag("brake_kept_winning_amount")
+                                            )
                                         }
+                                        HorizontalDivider(color = Color(0xFFEF4444).copy(alpha = 0.4f), thickness = 1.dp)
+                                    }
+                                }
+
+                                if (!hasValidWinNum && regularLeftRetainedList.isEmpty()) {
+                                    item {
                                         Text(
-                                            text = "$winningEntryCount",
-                                            color = Color(0xFFDC2626),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 11.sp,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                        Text(
-                                            text = fmt(keptWinningAmount),
-                                            color = Color(0xFFDC2626),
-                                            fontWeight = FontWeight.ExtraBold,
+                                            text = "မရှိပါ",
+                                            color = LuckyTextMuted,
                                             fontSize = 13.sp,
-                                            maxLines = 1,
-                                            softWrap = false,
-                                            modifier = Modifier.testTag("brake_kept_winning_amount")
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.padding(12.dp)
                                         )
                                     }
-                                    HorizontalDivider(color = Color(0xFFEF4444).copy(alpha = 0.4f), thickness = 1.dp)
+                                } else {
+                                    itemsIndexed(regularLeftRetainedList) { idx, (num, _, amt) ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(if (idx % 2 == 0) LuckyCard else LuckyCardDark)
+                                                .padding(vertical = 7.dp, horizontal = 10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(num, color = LuckyTextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, softWrap = false)
+                                            Text(fmt(amt), color = LuckyTextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, softWrap = false)
+                                        }
+                                        HorizontalDivider(color = LuckyBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
+                                    }
                                 }
                             }
 
-                            if (!hasValidWinNum && regularLeftRetainedList.isEmpty()) {
-                                item {
-                                    Text(
-                                        text = "မရှိပါ",
-                                        color = LuckyTextMuted,
-                                        fontSize = 12.sp,
-                                        modifier = Modifier.padding(12.dp)
+                            // Post-Draw State: Single-round summary ledger stacked below Left Column table
+                            if (hasValidWinNum) {
+                                HorizontalDivider(color = LuckyBorder, thickness = 1.dp)
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFFF8FAFC))
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                        .testTag("brake_post_draw_ledger"),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    BrakeLedgerLine("စုစုပေါင်း =", fmt(ledgerSales), LuckyTextPrimary)
+                                    BrakeLedgerLine("ကော် =", fmt(ledgerComm), LuckyTextPrimary)
+                                    BrakeLedgerLine("နှုတ်ပြီး =", fmt(ledgerNet), LuckyTextPrimary)
+                                    BrakeLedgerLine("ပေါက်သီး =", fmt(ledgerPayout), LuckyDanger)
+                                    val sign = when {
+                                        ledgerProfitLoss > 0L -> "+"
+                                        ledgerProfitLoss < 0L -> "-"
+                                        else -> ""
+                                    }
+                                    val plColor = when {
+                                        ledgerProfitLoss > 0L -> LuckySuccess
+                                        ledgerProfitLoss < 0L -> LuckyDanger
+                                        else -> LuckyTextPrimary
+                                    }
+                                    BrakeLedgerLine(
+                                        label = "အမြတ်ငွေ =",
+                                        value = "$sign${fmt(abs(ledgerProfitLoss))}",
+                                        valueColor = plColor
                                     )
                                 }
-                            } else {
-                                itemsIndexed(regularLeftRetainedList) { idx, (num, cnt, amt) ->
-                                    Row(
+                            }
+
+                            // Left Column Footer: "စုစုပေါင်း", "+ သိမ်းမည်" (or "သိမ်းရန်" post-draw), and "ရက်ချုပ်"
+                            HorizontalDivider(color = LuckyBorder, thickness = 1.dp)
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(LuckyCardDark)
+                                    .padding(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "စုစုပေါင်း = ${fmt(totalRetained)}",
+                                    color = LuckyTextPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Button(
+                                        onClick = { viewModel.lockAndSaveBrakeSettlement() },
+                                        enabled = hasRound,
+                                        colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
+                                        shape = RoundedCornerShape(6.dp),
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .background(if (idx % 2 == 0) LuckyCard else LuckyCardDark)
-                                            .padding(vertical = 7.dp, horizontal = 8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                            .weight(1f)
+                                            .height(36.dp)
+                                            .testTag("brake_lock_save_settlement_btn")
                                     ) {
-                                        Text(num, color = LuckyHeader, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, softWrap = false)
-                                        Text("$cnt", color = LuckyTextMuted, fontSize = 11.sp, maxLines = 1, softWrap = false)
-                                        Text(fmt(amt), color = LuckySuccess, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, softWrap = false)
+                                        Text(
+                                            text = if (hasValidWinNum) "သိမ်းရန်" else "+ သိမ်းမည်",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
                                     }
-                                    HorizontalDivider(color = LuckyBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
+                                    Button(
+                                        onClick = { viewModel.navigateTo(Screen.SETTLEMENT) },
+                                        colors = ButtonDefaults.buttonColors(containerColor = LuckySuccess, contentColor = Color.White),
+                                        shape = RoundedCornerShape(6.dp),
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(36.dp)
+                                            .testTag("goto_settlement_btn")
+                                    ) {
+                                        Text(
+                                            text = "ရက်ချုပ်",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -372,110 +529,107 @@ fun BrakeScreen(
                                 .background(LuckyBorder)
                         )
 
-                        // Right List: Layoff
-                        LazyColumn(
+                        // RIGHT COLUMN: တင်ကွက် + Right Footer
+                        Column(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
                         ) {
-                            if (rightLayoffList.isEmpty()) {
-                                item {
-                                    Text(
-                                        text = "ဘရိတ်ကျော် မရှိပါ",
-                                        color = LuckyTextMuted,
-                                        fontSize = 12.sp,
-                                        modifier = Modifier.padding(12.dp)
-                                    )
-                                }
-                            } else {
-                                itemsIndexed(rightLayoffList) { idx, (num, cnt, amt) ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .background(if (idx % 2 == 0) LuckyCard else LuckyCardDark)
-                                            .padding(vertical = 7.dp, horizontal = 8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(num, color = LuckyTextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, softWrap = false)
-                                        Text("$cnt", color = LuckyTextMuted, fontSize = 11.sp, maxLines = 1, softWrap = false)
-                                        Text(fmt(amt), color = LuckyDanger, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, softWrap = false)
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                            ) {
+                                if (rightLayoffList.isEmpty()) {
+                                    item {
+                                        Text(
+                                            text = "ဘရိတ်ကျော် မရှိပါ",
+                                            color = LuckyTextMuted,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.padding(12.dp)
+                                        )
                                     }
-                                    HorizontalDivider(color = LuckyBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
+                                } else {
+                                    itemsIndexed(rightLayoffList) { idx, (num, _, amt) ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(if (idx % 2 == 0) LuckyCard else LuckyCardDark)
+                                                .padding(vertical = 7.dp, horizontal = 10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(num, color = LuckyTextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, softWrap = false)
+                                            Text(fmt(amt), color = LuckyDanger, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, softWrap = false)
+                                        }
+                                        HorizontalDivider(color = LuckyBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
+                                    }
                                 }
                             }
-                        }
-                    }
 
-                    // Total Summaries
-                    HorizontalDivider(color = LuckyBorder, thickness = 1.dp)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(LuckyCardDark)
-                            .padding(horizontal = 8.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "စုစုပေါင်း: ${fmt(totalRetained)}",
-                            color = LuckySuccess,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            maxLines = 1,
-                            softWrap = false,
-                            modifier = Modifier.weight(1f),
-                            textAlign = TextAlign.Center
-                        )
-                        Text(
-                            text = "တင်ရန်: ${fmt(totalLayoff)}",
-                            color = LuckyDanger,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            maxLines = 1,
-                            softWrap = false,
-                            modifier = Modifier.weight(1f),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-
-                    // Bottom Action Buttons aligned cleanly across the full table width
-                    HorizontalDivider(color = LuckyBorder, thickness = 1.dp)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(LuckyCard)
-                            .padding(8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = { viewModel.navigateTo(Screen.SETTLEMENT) },
-                            colors = ButtonDefaults.buttonColors(containerColor = LuckySuccess, contentColor = Color.White),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-                            modifier = Modifier.weight(1f).height(38.dp).testTag("goto_settlement_btn")
-                        ) {
-                            Text("ရက်ချုပ်", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                        }
-
-                        Button(
-                            onClick = { showConfirmDialog = true },
-                            enabled = hasRound,
-                            colors = ButtonDefaults.buttonColors(containerColor = LuckyDanger, contentColor = Color.White),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-                            modifier = Modifier.weight(1f).height(38.dp).testTag("open_layoff_dialog_btn")
-                        ) {
-                            Text("တင်မည်", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                        }
-
-                        Button(
-                            onClick = { viewModel.navigateTo(Screen.LAYOFF_HISTORY) },
-                            colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-                            modifier = Modifier.weight(1f).height(38.dp).testTag("goto_layoff_history_btn")
-                        ) {
-                            Text("မှတ်တမ်း", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                            // Right Column Footer: "စုစုပေါင်း", "+ တင်မည်", and "မှတ်တမ်းများ"
+                            HorizontalDivider(color = LuckyBorder, thickness = 1.dp)
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(LuckyCardDark)
+                                    .padding(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "စုစုပေါင်း = ${fmt(totalLayoff)}",
+                                    color = LuckyDanger,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Button(
+                                        onClick = { showConfirmDialog = true },
+                                        enabled = hasRound,
+                                        colors = ButtonDefaults.buttonColors(containerColor = LuckyDanger, contentColor = Color.White),
+                                        shape = RoundedCornerShape(6.dp),
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(36.dp)
+                                            .testTag("open_layoff_dialog_btn")
+                                    ) {
+                                        Text(
+                                            text = "+ တင်မည်",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                    Button(
+                                        onClick = { viewModel.navigateTo(Screen.LAYOFF_HISTORY) },
+                                        colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
+                                        shape = RoundedCornerShape(6.dp),
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(36.dp)
+                                            .testTag("goto_layoff_history_btn")
+                                    ) {
+                                        Text(
+                                            text = "မှတ်တမ်းများ",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -502,7 +656,7 @@ fun BrakeScreen(
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
-                            text = stringResource(R.string.layoff_confirm_message, fmt(limit)),
+                            text = stringResource(R.string.layoff_confirm_message, fmt(activeBrake)),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 14.sp,
                             lineHeight = 22.sp
@@ -544,5 +698,34 @@ fun BrakeScreen(
                 }
             )
         }
+    }
+}
+
+@Composable
+private fun BrakeLedgerLine(
+    label: String,
+    value: String,
+    valueColor: Color
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = LuckyTextPrimary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1
+        )
+        Text(
+            text = value,
+            color = valueColor,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.ExtraBold,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1
+        )
     }
 }

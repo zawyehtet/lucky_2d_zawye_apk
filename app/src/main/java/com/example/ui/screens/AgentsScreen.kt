@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -126,6 +128,7 @@ fun AgentsScreen(
                         val summary = remember(agent, vouchers, wins, selectedDate, selectedSession, hasRound) {
                             viewModel.getAgentSummaryData(agent, winNum ?: "")
                         }
+                        val hasWinForSession = !winNum.isNullOrBlank() && winNum.length == 2
                         AgentCard(
                             agent = agent,
                             totalBet = summary.totalBet,
@@ -133,9 +136,13 @@ fun AgentsScreen(
                             netAmount = summary.netAmount,
                             voucherCount = summary.voucherCount,
                             payout = summary.payout,
+                            hasWinningNumber = hasWinForSession,
                             canStartBet = hasRound,
                             onStartBet = {
                                 viewModel.startNumberEntry(agent)
+                            },
+                            onOpenVouchers = {
+                                viewModel.openAgentVouchers(agent.name)
                             },
                             onEdit = {
                                 viewModel.onEditActionStarted()
@@ -206,8 +213,10 @@ fun AgentCard(
     netAmount: Long,
     voucherCount: Int,
     payout: Long,
+    hasWinningNumber: Boolean = false,
     canStartBet: Boolean = true,
     onStartBet: () -> Unit,
+    onOpenVouchers: () -> Unit = {},
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -327,20 +336,41 @@ fun AgentCard(
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        StatCell(label = "ဘောင်ချာ", value = "$voucherCount စောင်")
-                        StatCell(
-                            label = "လျော်ကြေး (${agent.mult.toInt()} ဆ)",
-                            value = fmt(payout),
-                            valueColor = if (payout > 0) LuckyDanger else LuckyTextSecondary
-                        )
-                        val netResult = netAmount - payout
-                        StatCell(
-                            label = if (netResult >= 0) "အမြတ် (ရရန်)" else "အရှုံး (ပေးရန်)",
-                            value = "${if (netResult >= 0) "+" else "-"}${fmt(kotlin.math.abs(netResult))}",
-                            valueColor = if (netResult >= 0) LuckySuccess else LuckyDanger
-                        )
+                        // Clickable "ဘောင်ချာ = X" navigating directly to that agent's vouchers list
+                        Surface(
+                            color = LuckyCardDark,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .clickable { onOpenVouchers() }
+                                .border(1.dp, LuckyBorder, RoundedCornerShape(8.dp))
+                                .testTag("agent_vouchers_btn_${agent.id}")
+                        ) {
+                            Text(
+                                text = "ဘောင်ချာ = $voucherCount",
+                                color = LuckyHeader,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+
+                        // Profit/Loss Visibility Rule: show ONLY AFTER a winning number has been entered
+                        if (hasWinningNumber) {
+                            StatCell(
+                                label = "လျော်ကြေး (${agent.mult.toInt()} ဆ)",
+                                value = fmt(payout),
+                                valueColor = if (payout > 0) LuckyDanger else LuckyTextSecondary
+                            )
+                            val netResult = netAmount - payout
+                            StatCell(
+                                label = "အရှုံး/အမြတ်",
+                                value = "${if (netResult >= 0) "+" else "-"}${fmt(kotlin.math.abs(netResult))}",
+                                valueColor = if (netResult >= 0) LuckySuccess else LuckyDanger
+                            )
+                        }
                     }
                 }
             }
@@ -389,105 +419,240 @@ fun AddAgentDialog(
     var rateStr by rememberSaveable { mutableStateOf("") }
     var multStr by rememberSaveable { mutableStateOf("") }
 
-    AlertDialog(
+    androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
-        containerColor = LuckyCard,
-        shape = RoundedCornerShape(14.dp),
-        title = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(LuckyHeader),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
-                }
-                Text("ကော်မရှင် အသစ်ထည့်မည်", color = LuckyTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "ကော် အိုင်ဒီ : $nextId",
-                    color = LuckyTextSecondary,
-                    fontSize = 13.sp
-                )
-
-                AppOutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text(stringResource(R.string.label_name)) },
-                    singleLine = true,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .widthIn(max = 440.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Top section: Header banner with avatar icon and camera badge
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .soundOnInputFocus()
-                        .testTag("add_agent_name_input")
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        .background(LuckyHeader)
+                        .padding(vertical = 16.dp, horizontal = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    AppOutlinedTextField(
-                        value = rateStr,
-                        onValueChange = { rateStr = it },
-                        label = { Text(stringResource(R.string.label_agent_commission_percent)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier
-                            .weight(1f)
-                            .soundOnInputFocus()
-                            .testTag("add_agent_rate_input")
+                    Text(
+                        text = "ကော်မရှင် အသစ် ထည့်မယ်",
+                        color = Color.White,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold
                     )
-
-                    AppOutlinedTextField(
-                        value = multStr,
-                        onValueChange = { multStr = it },
-                        label = { Text(stringResource(R.string.label_multiplier)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier
-                            .weight(1f)
-                            .soundOnInputFocus()
-                            .testTag("add_agent_mult_input")
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            AnimatedVisibility(visible = name.isNotBlank()) {
-                Button(
-                    onClick = {
-                        if (name.isNotBlank()) {
-                            val rate = MainViewModel.parseDoubleOrZero(rateStr)
-                            val mult = MainViewModel.parseDoubleOrZero(multStr)
-                            onAdd(name.trim(), rate, mult)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Box(contentAlignment = Alignment.BottomEnd) {
+                        Box(
+                            modifier = Modifier
+                                .size(62.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.2f))
+                                .border(2.dp, Color.White, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(38.dp)
+                            )
                         }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
-                    modifier = Modifier.testTag("add_agent_submit_btn")
-                ) {
-                    Text(stringResource(R.string.action_add), fontWeight = FontWeight.Bold)
+                        Box(
+                            modifier = Modifier
+                                .size(22.dp)
+                                .clip(CircleShape)
+                                .background(Color.White)
+                                .border(1.dp, LuckyHeader, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CameraAlt,
+                                contentDescription = null,
+                                tint = LuckyHeader,
+                                modifier = Modifier.size(13.dp)
+                            )
+                        }
+                    }
                 }
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                colors = ButtonDefaults.textButtonColors(contentColor = LuckyDanger)
-            ) {
-                Text(stringResource(R.string.action_cancel))
+
+                // Form Container (Dark Green #235347)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(LuckyHeader)
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "ကော် အိုင်ဒီ :",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(105.dp)
+                        )
+                        Text(
+                            text = "$nextId",
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "ကော် အမည် :",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(105.dp)
+                        )
+                        OutlinedTextField(
+                            value = name,
+                            onValueChange = { name = it },
+                            placeholder = {
+                                Text("ရိုက်ထည့်ပါ", color = LuckyTextMuted, fontSize = 13.sp)
+                            },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White,
+                                focusedTextColor = LuckyTextPrimary,
+                                unfocusedTextColor = LuckyTextPrimary,
+                                focusedBorderColor = Color.White,
+                                unfocusedBorderColor = LuckyBorder
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .soundOnInputFocus()
+                                .testTag("add_agent_name_input")
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "ကော်မရှင်ခ :",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(105.dp)
+                        )
+                        OutlinedTextField(
+                            value = rateStr,
+                            onValueChange = { rateStr = it },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White,
+                                focusedTextColor = LuckyTextPrimary,
+                                unfocusedTextColor = LuckyTextPrimary,
+                                focusedBorderColor = Color.White,
+                                unfocusedBorderColor = LuckyBorder
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .soundOnInputFocus()
+                                .testTag("add_agent_rate_input")
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "အဆ :",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(105.dp)
+                        )
+                        OutlinedTextField(
+                            value = multStr,
+                            onValueChange = { multStr = it },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White,
+                                focusedTextColor = LuckyTextPrimary,
+                                unfocusedTextColor = LuckyTextPrimary,
+                                focusedBorderColor = Color.White,
+                                unfocusedBorderColor = LuckyBorder
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .soundOnInputFocus()
+                                .testTag("add_agent_mult_input")
+                        )
+                    }
+                }
+
+                // Bottom Action Buttons: "မလုပ်တော့ပါ" (Red #F44336) and "ထည့်မည်" (Green #235347)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFF44336),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                    ) {
+                        Text("မလုပ်တော့ပါ", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+
+                    Button(
+                        onClick = {
+                            if (name.isNotBlank()) {
+                                val rate = MainViewModel.parseDoubleOrZero(rateStr)
+                                val mult = MainViewModel.parseDoubleOrZero(multStr)
+                                onAdd(name.trim(), rate, mult)
+                            }
+                        },
+                        enabled = name.isNotBlank(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = LuckyHeader,
+                            contentColor = Color.White,
+                            disabledContainerColor = LuckyBorder,
+                            disabledContentColor = LuckyTextMuted
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .testTag("add_agent_submit_btn")
+                    ) {
+                        Text(stringResource(R.string.action_add), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                }
             }
         }
-    )
+    }
 }
 
 @Composable
