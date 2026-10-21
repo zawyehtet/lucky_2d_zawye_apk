@@ -176,9 +176,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val entryTotalAmount: Long
         get() = _entryItems.value.sumOf { it.a }
 
-    // Brake screen limit state (starts empty)
+    // Brake screen limit state (starts empty, synchronized with Settings)
     private val _currentBrakeInput = MutableStateFlow("")
     val currentBrakeInput: StateFlow<String> = _currentBrakeInput.asStateFlow()
+
+    private val _savedBrakeLimitText = MutableStateFlow("")
+    val savedBrakeLimitText: StateFlow<String> = _savedBrakeLimitText.asStateFlow()
 
     // Flow A: active winning number passed to 2D စာရင်းချုပ်
     private val _activeWinningNumberFor2DSummary = MutableStateFlow<String?>(null)
@@ -239,7 +242,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val s = repository.loadSettings()
         _settings.value = s
         soundManager.isSoundEnabled = s.soundEnabled
-        _currentBrakeInput.value = if (s.brakeLimit > 0L) s.brakeLimit.toString() else ""
+        val initialBrakeStr = if (s.brakeLimit > 0L) s.brakeLimit.toString() else ""
+        _currentBrakeInput.value = initialBrakeStr
+        _savedBrakeLimitText.value = initialBrakeStr
     }
 
     fun onInputFocusOrTap() {
@@ -780,15 +785,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return summaries.sumOf { it.netAmount }
     }
 
-    // Layoff / Brake calculations
+    // Layoff / Brake calculations — Two-way synchronized single source of truth
     fun updateBrakeLimit(limitStr: String) {
-        _currentBrakeInput.value = limitStr
+        val clean = limitStr.filter { it.isDigit() }
+        _currentBrakeInput.value = clean
+        val limit = parseAmountOrZero(clean)
+        val updated = _settings.value.copy(brakeLimit = limit)
+        _settings.value = updated
+        repository.saveSettings(updated)
     }
 
     fun saveBrakeLimit() {
         val raw = _currentBrakeInput.value.trim()
-        if (raw.isEmpty()) return
         val limit = parseAmountOrZero(raw)
+        val normalizedText = if (limit > 0L) limit.toString() else if (raw.isNotEmpty()) "0" else ""
+        _currentBrakeInput.value = normalizedText
+        _savedBrakeLimitText.value = normalizedText
         val updated = _settings.value.copy(brakeLimit = limit)
         _settings.value = updated
         repository.saveSettings(updated)
@@ -796,17 +808,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         showToast("ဘရိတ်သတ်မှတ်ချက် (${limit}) သိမ်းဆည်းပြီးပါပြီ")
     }
 
-    // Layoff execution (ALL or 30 rows)
+    fun getEffectiveBrakeLimit(): Long {
+        return if (_currentBrakeInput.value.isNotBlank()) {
+            parseAmountOrZero(_currentBrakeInput.value)
+        } else {
+            _settings.value.brakeLimit.coerceAtLeast(0L)
+        }
+    }
+
+    // Layoff execution (ALL or 30 rows). When brake == 0, 100% of bets overflow to တင်ကွက်.
     fun executeLayoff(isAll: Boolean) {
         if (!hasActiveRound) {
             showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
             return
         }
-        val limit = if (_currentBrakeInput.value.isNotBlank()) {
-            parseAmountOrZero(_currentBrakeInput.value)
-        } else {
-            _settings.value.brakeLimit
-        }
+        val limit = getEffectiveBrakeLimit().coerceAtLeast(0L)
         val summaries = getAggregatedNumbers()
         val candidateItems = summaries.filter { it.netAmount > limit }
 
@@ -875,23 +891,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun editLayoffItem(recordId: Long, itemIndex: Int, newAmount: Long) {
-        if (newAmount <= 0L) return
+        val rec = _layoffs.value.firstOrNull { it.id == recordId } ?: return
+        val currentNum = rec.items.getOrNull(itemIndex)?.n ?: return
+        editLayoffItem(recordId, itemIndex, currentNum, newAmount)
+    }
+
+    fun editLayoffItem(recordId: Long, itemIndex: Int, newNumber: String, newAmount: Long): Boolean {
+        val cleanNum = newNumber.trim().filter { it.isDigit() }
+        if (cleanNum.length !in 2..3 || newAmount <= 0L) return false
+        val normalizedNum = if (cleanNum.length == 2) {
+            "%02d".format(Locale.US, cleanNum.toInt())
+        } else {
+            cleanNum
+        }
         var changed = false
         val updated = _layoffs.value.map { rec ->
             if (rec.id == recordId) {
                 val newItems = rec.items.toMutableList()
                 if (itemIndex in newItems.indices) {
-                    newItems[itemIndex] = newItems[itemIndex].copy(a = newAmount)
+                    newItems[itemIndex] = newItems[itemIndex].copy(n = normalizedNum, a = newAmount)
                     changed = true
                 }
                 rec.copy(items = newItems, total = newItems.sumOf { it.a })
             } else rec
         }
-        if (!changed) return
+        if (!changed) return false
         _layoffs.value = updated
         repository.saveLayoffs(updated)
         soundManager.playEdit()
         showToast("တင်ကွက် ပြင်ဆင်ပြီးပါပြီ")
+        return true
     }
 
     // Settlement
@@ -915,6 +944,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Returns the amount kept within the configured brake limit (မိမိလက်ခံသော/ဘရိတ်အတွင်း ပေါက်သီးပမာဏ)
      * for the active winning number on the တင်ကွက်များ (Brake) screen.
+     * When brake limit is 0, retained amount is 0 (dealer retains zero risk).
      */
     fun getKeptWinningAmountForBrake(winNumOverride: String? = null, brakeLimitOverride: Long? = null): Long {
         val rawWin = winNumOverride?.trim() ?: getWinningNumberForCurrentSession()
@@ -922,16 +952,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val parsed = rawWin.toIntOrNull()
         val normalizedWin = if (parsed != null && parsed in 0..99) "%02d".format(Locale.US, parsed) else rawWin
         val summary = getAggregatedNumbers().firstOrNull { it.n == normalizedWin } ?: return 0L
-        val activeBrakeLimit = brakeLimitOverride ?: if (_currentBrakeInput.value.isNotBlank()) {
-            parseAmountOrZero(_currentBrakeInput.value)
-        } else {
-            _settings.value.brakeLimit
-        }
-        return if (activeBrakeLimit > 0L) {
-            minOf(summary.netAmount, activeBrakeLimit)
-        } else {
-            summary.netAmount
-        }
+        val activeBrakeLimit = (brakeLimitOverride ?: getEffectiveBrakeLimit()).coerceAtLeast(0L)
+        return minOf(summary.netAmount, activeBrakeLimit)
     }
 
     fun getFormattedWinningHeaderForCurrentSession(
@@ -1031,11 +1053,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        val activeBrakeLimit = if (_currentBrakeInput.value.isNotBlank()) {
-            parseAmountOrZero(_currentBrakeInput.value)
-        } else {
-            _settings.value.brakeLimit
-        }
+        val isExplicitZeroBrake = _currentBrakeInput.value.trim() == "0"
+        val activeBrakeLimit = getEffectiveBrakeLimit()
 
         val retainedPerNum = mutableMapOf<String, Long>()
         for (i in 0..99) {
@@ -1043,7 +1062,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val tot = totalPerNum[numStr] ?: 0L
             val lay = layoffPerNum[numStr] ?: 0L
             val netHeld = (tot - lay).coerceAtLeast(0L)
-            retainedPerNum[numStr] = if (activeBrakeLimit > 0L) minOf(netHeld, activeBrakeLimit) else netHeld
+            retainedPerNum[numStr] = when {
+                isExplicitZeroBrake -> 0L
+                activeBrakeLimit > 0L -> minOf(netHeld, activeBrakeLimit)
+                else -> netHeld
+            }
         }
 
         val totalRetained = retainedPerNum.values.sum()
@@ -1312,14 +1335,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val sess = _selectedSession.value
         val roundKey = "$date|$sess"
         deletedRoundKeys.remove(roundKey)
-
-        val existingLocked = getLockedSettledRecordForCurrentSession()
-        if (existingLocked != null) {
-            soundManager.playSave()
-            showToast("ရက်ချုပ် စာရင်း သိမ်းဆည်းပြီးပါပြီ")
-            navigateTo(Screen.SETTLEMENT)
-            return
-        }
 
         val winNum = getWinningNumberForCurrentSession()
         val calc = calculateSettlementForSession(date = date, session = sess, winningNum = winNum)
@@ -1659,25 +1674,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun exportCurrentSessionLedgerToFile(context: android.content.Context, launchShare: Boolean = false): java.io.File {
         val date = _selectedDate.value
         val sess = _selectedSession.value.ifBlank { "-" }
-        val activeBrake = if (_currentBrakeInput.value.isNotBlank()) {
-            parseAmountOrZero(_currentBrakeInput.value)
-        } else {
-            _settings.value.brakeLimit
-        }
+        val activeBrake = getEffectiveBrakeLimit().coerceAtLeast(0L)
         val summaries = getAggregatedNumbers()
         val winNum = getWinningNumberForCurrentSession()
         val calc = calculateSettlementForSession(date = date, session = sess, winningNum = winNum)
         val sessionLayoffs = getFilteredLayoffs()
 
-        val keptItems = summaries.mapNotNull { s ->
-            val kept = if (activeBrake > 0L) minOf(s.netAmount, activeBrake) else s.netAmount
-            if (kept > 0L) s.n to kept else null
-        }
-        val overflowItems = if (activeBrake > 0L) {
+        val keptItems = if (activeBrake > 0L) {
             summaries.mapNotNull { s ->
-                if (s.netAmount > activeBrake) s.n to (s.netAmount - activeBrake) else null
+                val kept = minOf(s.netAmount, activeBrake)
+                if (kept > 0L) s.n to kept else null
             }
-        } else emptyList()
+        } else {
+            emptyList()
+        }
+        val overflowItems = summaries.mapNotNull { s ->
+            if (s.netAmount > activeBrake) s.n to (s.netAmount - activeBrake) else null
+        }
 
         val csvContent = buildString {
             appendLine("အမျိုးအစား,ဂဏန်း,ပမာဏ,ရက်စွဲ,အပိုင်း")

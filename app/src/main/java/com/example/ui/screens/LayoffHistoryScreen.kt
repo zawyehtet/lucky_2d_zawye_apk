@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.example.data.LayoffItem
 import com.example.data.LayoffRecord
@@ -45,7 +46,15 @@ fun LayoffHistoryScreen(
 
     var selectedDetailRecord by remember { mutableStateOf<LayoffRecord?>(null) }
     var batchToDelete by remember { mutableStateOf<LayoffRecord?>(null) }
+    var itemActionTarget by remember { mutableStateOf<Pair<Int, LayoffItem>?>(null) }
     var itemToEdit by remember { mutableStateOf<Pair<Int, LayoffItem>?>(null) }
+    var itemToDelete by remember { mutableStateOf<Pair<Int, LayoffItem>?>(null) }
+
+    LaunchedEffect(layoffs) {
+        selectedDetailRecord?.let { current ->
+            selectedDetailRecord = layoffs.firstOrNull { it.id == current.id }
+        }
+    }
 
     val filtered = if (!hasRound) {
         emptyList()
@@ -254,7 +263,7 @@ fun LayoffHistoryScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("တင်ကွက် အသေးစိတ်", color = LuckyTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("တင်ကွက် အသေးစိတ်", color = LuckyTextPrimary, fontSize = 16.sp, lineHeight = 1.5.em, fontWeight = FontWeight.Bold)
                         Row {
                             IconButton(onClick = { ShareHelper.copyToClipboard(context, detailText) }) {
                                 Icon(Icons.Default.ContentCopy, contentDescription = "ကူးယူရန်", tint = LuckyHeader)
@@ -267,9 +276,9 @@ fun LayoffHistoryScreen(
                 },
                 text = {
                     Column(modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
-                        Text("အချိန် : ${record.time}", color = LuckyTextSecondary, fontSize = 12.sp)
-                        Text("ဘရိတ်သတ်မှတ်ချက် : ${fmt(record.limit)}", color = LuckyTextSecondary, fontSize = 12.sp)
-                        Text("စုစုပေါင်း : ${fmt(record.total)} (${record.items.size} လုံး)", color = LuckyHeader, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("အချိန် : ${record.time}", color = LuckyTextSecondary, fontSize = 12.sp, lineHeight = 1.5.em)
+                        Text("ဘရိတ်သတ်မှတ်ချက် : ${fmt(record.limit)}", color = LuckyTextSecondary, fontSize = 12.sp, lineHeight = 1.5.em)
+                        Text("စုစုပေါင်း : ${fmt(record.total)} (${record.items.size} လုံး)", color = LuckyHeader, fontWeight = FontWeight.Bold, fontSize = 13.sp, lineHeight = 1.5.em)
 
                         Spacer(modifier = Modifier.height(8.dp))
                         HorizontalDivider(color = LuckyBorder)
@@ -283,10 +292,11 @@ fun LayoffHistoryScreen(
                                             onClick = {},
                                             onLongPress = {
                                                 viewModel.onEditActionStarted()
-                                                itemToEdit = Pair(i, itm)
+                                                itemActionTarget = Pair(i, itm)
                                             }
                                         )
-                                        .padding(vertical = 6.dp),
+                                        .padding(vertical = 8.dp)
+                                        .testTag("layoff_detail_row_$i"),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -300,90 +310,133 @@ fun LayoffHistoryScreen(
                 },
                 confirmButton = {
                     TextButton(onClick = { selectedDetailRecord = null }) {
-                        Text("ပိတ်မည်", color = LuckyHeader, fontWeight = FontWeight.Bold)
+                        Text("ပိတ်မည်", color = LuckyHeader, fontWeight = FontWeight.Bold, lineHeight = 1.5.em)
                     }
                 }
             )
         }
 
-        // Action / Edit Layoff Item inside Detail View
-        itemToEdit?.let { (idx, itm) ->
-            val savedAmtStr = if (itm.a > 0L) itm.a.toString() else ""
-            var newAmountStr by rememberSaveable(itm.n, itm.a) { mutableStateOf(savedAmtStr) }
-            var showItemDeleteConfirm by rememberSaveable { mutableStateOf(false) }
-            val showItemSaveBtn = MainViewModel.shouldShowSaveButton(newAmountStr, savedAmtStr)
+        // 1. Long-press Action Sheet / Dialog offering 2 distinct actions: "ပြင်မည်" and "ဖျက်မည်"
+        itemActionTarget?.let { (idx, itm) ->
+            RecordActionMenuDialog(
+                title = "${itm.n} = ${fmt(itm.a)}",
+                onDismiss = { itemActionTarget = null },
+                onEdit = {
+                    itemToEdit = Pair(idx, itm)
+                },
+                onDelete = {
+                    itemToDelete = Pair(idx, itm)
+                }
+            )
+        }
 
-            if (showItemDeleteConfirm) {
-                DeleteConfirmDialog(
-                    itemName = "${itm.n} = ${fmt(itm.a)}",
-                    onDismiss = { showItemDeleteConfirm = false },
-                    onConfirm = {
-                        selectedDetailRecord?.let { rec ->
-                            viewModel.deleteLayoffItem(rec.id, idx)
-                            selectedDetailRecord = viewModel.layoffs.value.firstOrNull { it.id == rec.id }
-                        }
-                        showItemDeleteConfirm = false
-                        itemToEdit = null
+        // 2. Delete Confirmation Dialog for a single Layoff Item
+        itemToDelete?.let { (idx, itm) ->
+            DeleteConfirmDialog(
+                itemName = "${itm.n} = ${fmt(itm.a)}",
+                onDismiss = { itemToDelete = null },
+                onConfirm = {
+                    selectedDetailRecord?.let { rec ->
+                        viewModel.deleteLayoffItem(rec.id, idx)
+                        selectedDetailRecord = viewModel.layoffs.value.firstOrNull { it.id == rec.id }
                     }
-                )
-            } else {
-                AlertDialog(
-                    onDismissRequest = { itemToEdit = null },
-                    containerColor = LuckyCard,
-                    shape = RoundedCornerShape(14.dp),
-                    title = {
-                        Text("တင်ကွက် ပြင်မည် (${itm.n})", color = LuckyTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    },
-                    text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            AppOutlinedTextField(
-                                value = newAmountStr,
-                                onValueChange = { newAmountStr = it.filter { c -> c.isDigit() } },
-                                label = { Text("ပမာဏ") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                singleLine = true,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .soundOnInputFocus()
-                            )
-                        }
-                    },
-                    confirmButton = {
-                        androidx.compose.animation.AnimatedVisibility(visible = showItemSaveBtn) {
-                            Button(
-                                onClick = {
-                                    val amt = MainViewModel.parseAmountOrZero(newAmountStr)
-                                    if (amt <= 0) {
-                                        viewModel.showToast("ပမာဏ မှားယွင်းနေပါသည်")
-                                        return@Button
-                                    }
-                                    selectedDetailRecord?.let { rec ->
-                                        viewModel.editLayoffItem(rec.id, idx, amt)
-                                        selectedDetailRecord = viewModel.layoffs.value.firstOrNull { it.id == rec.id }
-                                    }
+                    itemToDelete = null
+                }
+            )
+        }
+
+        // 3. Edit Layoff Item Dialog ("တင်ကွက် ပြင်ဆင်ရန်") with BOTH Number (ဂဏန်း) and Amount (ငွေပမာဏ)
+        itemToEdit?.let { (idx, itm) ->
+            val savedNumStr = itm.n
+            val savedAmtStr = if (itm.a > 0L) itm.a.toString() else ""
+            var newNumberStr by rememberSaveable(idx, itm.n, itm.a) { mutableStateOf(savedNumStr) }
+            var newAmountStr by rememberSaveable(idx, itm.n, itm.a) { mutableStateOf(savedAmtStr) }
+
+            AlertDialog(
+                onDismissRequest = { itemToEdit = null },
+                containerColor = LuckyCard,
+                shape = RoundedCornerShape(14.dp),
+                title = {
+                    Text(
+                        text = "တင်ကွက် ပြင်ဆင်ရန်",
+                        color = LuckyTextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        lineHeight = 1.5.em,
+                        modifier = Modifier.testTag("edit_layoff_dialog_title")
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        AppOutlinedTextField(
+                            value = newNumberStr,
+                            onValueChange = { newNumberStr = it.filter { c -> c.isDigit() }.take(3) },
+                            label = { Text("ဂဏန်း", lineHeight = 1.5.em) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .soundOnInputFocus()
+                                .testTag("edit_layoff_number_input")
+                        )
+                        AppOutlinedTextField(
+                            value = newAmountStr,
+                            onValueChange = { newAmountStr = it.filter { c -> c.isDigit() } },
+                            label = { Text("ငွေပမာဏ", lineHeight = 1.5.em) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .soundOnInputFocus()
+                                .testTag("edit_layoff_amount_input")
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val cleanNum = newNumberStr.trim().filter { it.isDigit() }
+                            val amt = MainViewModel.parseAmountOrZero(newAmountStr)
+                            if (cleanNum.length !in 2..3) {
+                                viewModel.showToast("ဂဏန်း မှားယွင်းနေပါသည်")
+                                return@Button
+                            }
+                            if (amt <= 0L) {
+                                viewModel.showToast("ပမာဏ မှားယွင်းနေပါသည်")
+                                return@Button
+                            }
+                            selectedDetailRecord?.let { rec ->
+                                if (viewModel.editLayoffItem(rec.id, idx, cleanNum, amt)) {
+                                    selectedDetailRecord = viewModel.layoffs.value.firstOrNull { it.id == rec.id }
                                     itemToEdit = null
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White)
-                            ) {
-                                Text("သိမ်းမည်", fontWeight = FontWeight.Bold)
+                                }
                             }
-                        }
-                    },
-                    dismissButton = {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(
-                                onClick = { showItemDeleteConfirm = true },
-                                colors = ButtonDefaults.textButtonColors(contentColor = LuckyDanger)
-                            ) {
-                                Text("ဖျက်မည်", fontWeight = FontWeight.Bold)
-                            }
-                            TextButton(onClick = { itemToEdit = null }) {
-                                Text("မလုပ်တော့ပါ", color = LuckyTextSecondary)
-                            }
-                        }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.testTag("save_edit_layoff_btn")
+                    ) {
+                        Text(
+                            text = "သိမ်းဆည်းမည်",
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = 1.5.em
+                        )
                     }
-                )
-            }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { itemToEdit = null },
+                        modifier = Modifier.testTag("cancel_edit_layoff_btn")
+                    ) {
+                        Text(
+                            text = "မလုပ်တော့ပါ",
+                            color = LuckyTextSecondary,
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = 1.5.em
+                        )
+                    }
+                }
+            )
         }
     }
 }

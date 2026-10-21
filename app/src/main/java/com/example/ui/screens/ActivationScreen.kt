@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -47,6 +48,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.security.LicenseManager
 import com.example.ui.components.CloverLogo
 import com.example.ui.theme.*
@@ -158,24 +160,37 @@ fun ActivationScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // 1. App Logo & Title
+            // 1. App Logo & Brand Title
             Box(
                 modifier = Modifier
-                    .size(76.dp)
+                    .size(84.dp)
                     .clip(CircleShape)
-                    .background(LuckyHeader)
-                    .border(2.dp, Color.White, CircleShape),
+                    .background(Color(0xFFEFF9D1))
+                    .border(2.5.dp, LuckyHeader, CircleShape)
+                    .testTag("activation_brand_logo"),
                 contentAlignment = Alignment.Center
             ) {
-                CloverLogo(size = 46.dp)
+                CloverLogo(size = 80.dp)
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = stringResource(R.string.app_name),
+                color = LuckyHeader,
+                fontFamily = LuckySansFontFamily,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.ExtraBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.testTag("activation_brand_name")
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
 
             Text(
                 text = "ဆော့ဝဲလ် အသက်သွင်းခြင်း",
                 color = LuckyTextPrimary,
-                fontSize = 21.sp,
+                fontSize = 20.sp,
                 lineHeight = 1.5.em,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
@@ -191,7 +206,7 @@ fun ActivationScreen(
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(22.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // 2. Main Activation Card
             Card(
@@ -467,6 +482,19 @@ fun ActivationScreen(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Text(
+                text = stringResource(R.string.home_footer_branding),
+                color = LuckyTextMuted,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("activation_footer_branding")
+            )
         }
 
         if (showSuccessDialog) {

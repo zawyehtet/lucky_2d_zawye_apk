@@ -627,6 +627,35 @@ class ExampleRobolectricTest {
         val exportedCsv = viewModel.exportDailySettlementsToFile(context, launchShare = false)
         assertTrue(exportedCsv.exists())
         assertTrue(exportedCsv.readText().contains("မနက်ပိုင်း"))
+
+        // Verify Overflow Ledger Record Edit (Both Number & Amount) & Delete
+        val layoffRec = viewModel.layoffs.value.first()
+        assertTrue(viewModel.editLayoffItem(layoffRec.id, 0, "88", 6500L))
+        val editedLayoffRec = viewModel.layoffs.value.first { it.id == layoffRec.id }
+        assertEquals("88", editedLayoffRec.items[0].n)
+        assertEquals(6500L, editedLayoffRec.items[0].a)
+        assertEquals(6500L, editedLayoffRec.total)
+
+        viewModel.deleteLayoffItem(layoffRec.id, 0)
+        assertTrue(viewModel.layoffs.value.none { it.id == layoffRec.id })
+
+        // Verify Zero Brake Limit Logic (ဘရိတ် 0 သတ်မှတ်ချက်) & Shared State Synchronization
+        viewModel.updateBrakeLimit("0")
+        viewModel.saveBrakeLimit()
+        assertEquals(0L, viewModel.settings.value.brakeLimit)
+        assertEquals("0", viewModel.currentBrakeInput.value)
+        assertEquals("0", viewModel.savedBrakeLimitText.value)
+        assertEquals(0L, viewModel.getKeptWinningAmountForBrake("47"))
+        val zeroBrakeCalc = viewModel.calculateSettlementForSession(winningNum = "47")
+        assertEquals(0L, zeroBrakeCalc.totalRetained)
+        assertEquals(0L, zeroBrakeCalc.payout)
+        assertEquals(0L, zeroBrakeCalc.profitLoss)
+
+        // When Brake = 0, executeLayoff moves 100% of all bets (12000 + 4000 = 16000) to တင်ကွက်
+        viewModel.executeLayoff(isAll = true)
+        val zeroBrakeLayoff = viewModel.layoffs.value.first()
+        assertEquals(2, zeroBrakeLayoff.items.size)
+        assertEquals(16000L, zeroBrakeLayoff.total)
     }
 }
 

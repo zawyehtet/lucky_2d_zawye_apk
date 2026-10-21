@@ -26,7 +26,7 @@ fun CloverLogo(
         modifier = modifier
             .size(size)
             .clip(CircleShape)
-            .background(CloverBg),
+            .background( androidx.compose.ui.graphics.Color(0xFFEFF9D1)),
         contentAlignment = Alignment.Center
     ) {
         Image(

@@ -239,14 +239,19 @@ fun SettingsScreen(
             }
 
             item {
+                val effectiveBrake = if (currentBrakeInput.isNotBlank()) {
+                    MainViewModel.parseAmountOrZero(currentBrakeInput)
+                } else {
+                    settings.brakeLimit
+                }
                 SettingsRowCard(
                     icon = Icons.Default.Speed,
                     iconColor = LuckySuccess,
                     title = stringResource(R.string.setting_brake_limit_title),
-                    subtitle = "${stringResource(R.string.label_brake)}: ${fmt(settings.brakeLimit)}",
+                    subtitle = "${stringResource(R.string.label_brake)}: ${fmt(effectiveBrake)}",
                     testTag = "setting_limits",
                     onClick = {
-                        brakeLimitInput = ""
+                        brakeLimitInput = if (effectiveBrake > 0L) effectiveBrake.toString() else currentBrakeInput
                         activeDialog = "LIMITS"
                     }
                 )
@@ -1244,7 +1249,7 @@ fun SettingsScreen(
                                     if (brakeLimitInput.isNotBlank()) {
                                         viewModel.updateBrakeLimit(brakeLimitInput)
                                         viewModel.saveBrakeLimit()
-                                        brakeLimitInput = ""
+                                        activeDialog = null
                                     }
                                 },
                                 horizontalPadding = 16.dp,

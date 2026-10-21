@@ -48,6 +48,7 @@ fun BrakeScreen(
     val sessions by viewModel.sessions.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
     val currentBrakeInput by viewModel.currentBrakeInput.collectAsState()
+    val savedBrakeLimitText by viewModel.savedBrakeLimitText.collectAsState()
     val settings by viewModel.settings.collectAsState()
 
     val vouchers by viewModel.vouchers.collectAsState()
@@ -72,50 +73,45 @@ fun BrakeScreen(
     }
 
     var showConfirmDialog by rememberSaveable { mutableStateOf(false) }
-    var lastSavedBrakeText by rememberSaveable(settings.brakeLimit) {
-        mutableStateOf(if (settings.brakeLimit > 0L) settings.brakeLimit.toString() else "")
-    }
 
-    val showBrakeSaveBtn = hasRound && MainViewModel.shouldShowSaveButton(currentBrakeInput, lastSavedBrakeText)
+    val showBrakeSaveBtn = hasRound && MainViewModel.shouldShowSaveButton(currentBrakeInput, savedBrakeLimitText)
 
     val limit = MainViewModel.parseAmountOrZero(currentBrakeInput)
-    val activeBrake = if (currentBrakeInput.isNotBlank()) limit else settings.brakeLimit
+    val activeBrake = (if (currentBrakeInput.isNotBlank()) limit else settings.brakeLimit).coerceAtLeast(0L)
 
     val summaries = remember(vouchers, layoffs, selectedDate, selectedSession) {
         viewModel.getAggregatedNumbers()
     }
 
-    // Immutability check: if this round's settlement was locked/saved, reuse its locked figures
-    val lockedRecord = remember(settledRecords, selectedDate, selectedSession) {
-        viewModel.getLockedSettledRecordForCurrentSession()
-    }
-
     // Amount kept within the configured brake limit (မိမိလက်ခံသော/ဘရိတ်အတွင်း ပေါက်သီးပမာဏ)
+    // When activeBrake == 0, dealer retains zero risk (0).
     val keptWinningAmount = remember(summaries, formattedWinNum, hasValidWinNum, activeBrake) {
-        if (hasValidWinNum) {
+        if (hasValidWinNum && activeBrake > 0L) {
             val winSummary = summaries.firstOrNull { it.n == formattedWinNum }
             if (winSummary != null) {
-                if (activeBrake > 0L) minOf(winSummary.netAmount, activeBrake) else winSummary.netAmount
+                minOf(winSummary.netAmount, activeBrake)
             } else 0L
         } else 0L
     }
 
+    // When activeBrake == 0, "လက်ခံကွက်" (Left Column) is completely empty (0 retained risk)
     val leftRetainedList = remember(summaries, activeBrake) {
-        summaries.map { summary ->
-            val retained = if (activeBrake > 0L) minOf(summary.netAmount, activeBrake) else summary.netAmount
-            Triple(summary.n, summary.entryCount, retained)
-        }.filter { it.third > 0L }
-    }
-
-    val rightLayoffList = remember(summaries, activeBrake) {
         if (activeBrake > 0L) {
             summaries.mapNotNull { summary ->
-                if (summary.netAmount > activeBrake) {
-                    Triple(summary.n, summary.entryCount, summary.netAmount - activeBrake)
-                } else null
+                val retained = minOf(summary.netAmount, activeBrake)
+                if (retained > 0L) Triple(summary.n, summary.entryCount, retained) else null
             }
         } else {
             emptyList()
+        }
+    }
+
+    // When activeBrake == 0, "တင်ကွက်" (Right Column) receives 100% of all bets
+    val rightLayoffList = remember(summaries, activeBrake) {
+        summaries.mapNotNull { summary ->
+            if (summary.netAmount > activeBrake) {
+                Triple(summary.n, summary.entryCount, summary.netAmount - activeBrake)
+            } else null
         }
     }
 
@@ -127,14 +123,14 @@ fun BrakeScreen(
         )
     }
 
-    val totalRetained = lockedRecord?.totalRetained ?: leftRetainedList.sumOf { it.third }
+    val totalRetained = leftRetainedList.sumOf { it.third }
     val totalLayoff = rightLayoffList.sumOf { it.third }
 
-    val ledgerSales = lockedRecord?.totalRetained ?: liveCalc.totalRetained
-    val ledgerComm = lockedRecord?.commission ?: liveCalc.commission
-    val ledgerNet = lockedRecord?.retainedNet ?: liveCalc.retainedNet
-    val ledgerPayout = lockedRecord?.payout ?: liveCalc.payout
-    val ledgerProfitLoss = lockedRecord?.profitLoss ?: liveCalc.profitLoss
+    val ledgerSales = if (activeBrake <= 0L) 0L else liveCalc.totalRetained
+    val ledgerComm = if (activeBrake <= 0L) 0L else liveCalc.commission
+    val ledgerNet = if (activeBrake <= 0L) 0L else liveCalc.retainedNet
+    val ledgerPayout = if (activeBrake <= 0L) 0L else liveCalc.payout
+    val ledgerProfitLoss = if (activeBrake <= 0L) 0L else liveCalc.profitLoss
 
     val orangeHeaderBg = Color(0xFFF57C00)
 
@@ -259,7 +255,6 @@ fun BrakeScreen(
                         Button(
                             onClick = {
                                 viewModel.saveBrakeLimit()
-                                lastSavedBrakeText = currentBrakeInput.trim()
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
                             shape = RoundedCornerShape(8.dp),
@@ -370,7 +365,7 @@ fun BrakeScreen(
                                     .weight(1f)
                             ) {
                                 // Pinned Winning Number Row in "လက်ခံကွက်" highlighted in Yellow/Red background with retained amount within brake limit
-                                if (hasValidWinNum) {
+                                if (hasValidWinNum && activeBrake > 0L) {
                                     item(key = "kept_winning_number_top_row") {
                                         Row(
                                             modifier = Modifier
@@ -426,7 +421,7 @@ fun BrakeScreen(
                                     }
                                 }
 
-                                if (!hasValidWinNum && regularLeftRetainedList.isEmpty()) {
+                                if ((activeBrake <= 0L || !hasValidWinNum) && regularLeftRetainedList.isEmpty()) {
                                     item {
                                         Text(
                                             text = "မရှိပါ",
