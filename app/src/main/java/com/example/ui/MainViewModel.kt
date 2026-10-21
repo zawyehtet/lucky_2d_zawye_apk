@@ -206,7 +206,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val isCommissionSetForEntry: Boolean
         get() = _entryAgent.value != null
 
-    // Guard against rapid duplicate delete taps for the same numberId / settledRecordId
+    // Guard against rapid duplicate delete taps for the same voucherId / numberId / settledRecordId
+    private val deletedVoucherIds = mutableSetOf<Long>()
     private val deletedNumberIds = mutableSetOf<Long>()
     private val deletedSettledIds = mutableSetOf<Long>()
     private val deletedRoundKeys = mutableSetOf<String>()
@@ -219,6 +220,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadAllData() {
+        deletedVoucherIds.clear()
         deletedNumberIds.clear()
         deletedSettledIds.clear()
         deletedRoundKeys.clear()
@@ -443,11 +445,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun removeLastEntryItem() {
-        if (!isCommissionSetForEntry) return
-        if (_entryItems.value.isNotEmpty()) {
-            _entryItems.value = _entryItems.value.dropLast(1)
-            soundManager.playDelete()
-        }
+        // Guarded: keypad "ဖျက်" must never delete confirmed betting rows from the table.
+        // Confirmed rows can only be deleted via long-press / deleteEntryItem(index).
     }
 
     fun editEntryItem(index: Int, newNumber: String, newAmount: Long): Boolean {
@@ -535,6 +534,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _entryItems.value = emptyList()
         soundManager.playSave()
         showToast("ဘောင်ချာ (No.$nextNo) သိမ်းဆည်းပြီးပါပြီ")
+        return true
+    }
+
+    /**
+     * Deletes an entire Voucher by [voucherId] along with all its associated bet items (CASCADE),
+     * updating voucher counts and recalculating grand totals immediately.
+     */
+    fun deleteVoucher(voucherId: Long): Boolean {
+        if (!deletedVoucherIds.add(voucherId)) {
+            return false
+        }
+        if (_vouchers.value.none { it.id == voucherId }) {
+            deletedVoucherIds.remove(voucherId)
+            return false
+        }
+        val updated = _vouchers.value.filter { it.id != voucherId }
+        _vouchers.value = updated
+        repository.deleteVoucherById(voucherId) ?: repository.saveVouchers(updated)
+        soundManager.playDelete()
+        showToast("ဘောင်ချာ ဖျက်ပြီးပါပြီ")
         return true
     }
 
@@ -1378,68 +1397,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Synchronizes active rounds that have a saved winning number on the selected date into `_settled`
-     * so they appear in the "ရက်ချုပ်အားလုံး" table as editable/deletable records,
-     * without recreating deleted records or overwriting manually edited records.
+     * Strict Daily Settlement Persistence Guard ("ရက်ချုပ်" မသိမ်းမချင်း လုံးဝ မပြရန်):
+     * Entering a winning number or calculating preview profit/loss must NOT automatically
+     * populate or show any records inside the "ရက်ချုပ်" / "ရက်ချုပ်အားလုံး" screen.
+     * Daily settlement records in `_settled` ONLY appear and are saved after the user explicitly
+     * taps the "သိမ်းမည်" (Save Settlement) button (`lockAndSaveBrakeSettlement` or `commitSettlement`).
      */
     fun syncDailyRecordsFromCurrentDateRounds() {
-        val rounds = getRoundSummariesForSelectedDate()
-        if (rounds.isEmpty()) return
-        var currentList = _settled.value
-        var changed = false
-
-        for (round in rounds) {
-            val roundKey = "${round.date}|${round.session}"
-            if (roundKey in deletedRoundKeys) continue
-
-            val existing = currentList.firstOrNull { it.date == round.date && it.session == round.session }
-            val hasWin = _wins.value.any {
-                it.date == round.date && it.session == round.session && it.n.length == 2 && it.n.all { c -> c.isDigit() }
-            }
-
-            if (existing != null) {
-                if (existing.id !in manuallyEditedRecordIds && hasWin) {
-                    if (existing.totalRetained != round.totalBet ||
-                        existing.commission != round.commission ||
-                        existing.retainedNet != round.netAmount ||
-                        existing.payout != round.payout ||
-                        existing.profitLoss != round.profitLoss ||
-                        existing.winningNumber != round.winningNumber
-                    ) {
-                        val updatedRec = existing.copy(
-                            winningNumber = round.winningNumber,
-                            totalRetained = round.totalBet,
-                            commission = round.commission,
-                            retainedNet = round.netAmount,
-                            payout = round.payout,
-                            profitLoss = round.profitLoss
-                        )
-                        currentList = currentList.map { if (it.id == existing.id) updatedRec else it }
-                        changed = true
-                    }
-                }
-            } else if (hasWin) {
-                val newRec = SettledRecord(
-                    id = System.currentTimeMillis() + (nextSettledIdCounter++),
-                    date = round.date,
-                    session = round.session,
-                    winningNumber = round.winningNumber,
-                    totalRetained = round.totalBet,
-                    commission = round.commission,
-                    retainedNet = round.netAmount,
-                    payout = round.payout,
-                    profitLoss = round.profitLoss,
-                    timestamp = timeFormatter.format(Date())
-                )
-                currentList = currentList + newRec
-                changed = true
-            }
-        }
-
-        if (changed) {
-            _settled.value = currentList
-            repository.saveSettled(currentList)
-        }
+        // Strict guard: never auto-insert unsaved rounds into _settled.
     }
 
     fun getDailySummaryTotalSales(): Long = _settled.value.sumOf { it.totalRetained }

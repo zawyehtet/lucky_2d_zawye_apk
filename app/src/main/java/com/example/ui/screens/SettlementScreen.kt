@@ -65,11 +65,6 @@ fun SettlementScreen(viewModel: MainViewModel) {
     val editingRecord by viewModel.editingSettledRecord.collectAsState()
     val haptic = LocalHapticFeedback.current
 
-    // Keep current date's active rounds synced as editable/deletable records while preserving locked records
-    LaunchedEffect(vouchers, layoffs, sessions, wins, selectedDate) {
-        viewModel.syncDailyRecordsFromCurrentDateRounds()
-    }
-
     val totalProfitLoss = remember(settledRecords) { settledRecords.sumOf { it.profitLoss } }
 
     var activeMenuRecordId by rememberSaveable { mutableStateOf<Long?>(null) }

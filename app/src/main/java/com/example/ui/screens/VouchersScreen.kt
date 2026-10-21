@@ -4,6 +4,8 @@ package com.example.ui.screens
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,7 +23,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -33,6 +37,7 @@ import com.example.data.BetItem
 import com.example.data.Voucher
 import com.example.ui.MainViewModel
 import com.example.ui.components.AppHeader
+import com.example.ui.components.DeleteConfirmDialog
 import com.example.ui.components.EntryLongPressDropdownMenu
 import com.example.ui.components.RoundRequiredHelperBanner
 import com.example.ui.components.SearchPill
@@ -65,6 +70,7 @@ fun VouchersScreen(
     var editingInitialAmount by rememberSaveable { mutableStateOf(0L) }
 
     var addingToVoucherId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var deletingVoucherId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     val filteredVouchers = if (!hasRound) {
         emptyList()
@@ -119,7 +125,8 @@ fun VouchersScreen(
                         text = "စုစုပေါင်း ဘောင်ချာ : ${filteredVouchers.size} စောင်",
                         color = LuckyHeader,
                         fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.testTag("voucher_count_label")
                     )
                 }
 
@@ -169,6 +176,9 @@ fun VouchersScreen(
                             },
                             onAddNumber = {
                                 addingToVoucherId = voucher.id
+                            },
+                            onDeleteVoucher = {
+                                deletingVoucherId = voucher.id
                             },
                             onCopy = {
                                 val text = buildReceiptText(voucher)
@@ -221,6 +231,23 @@ fun VouchersScreen(
                 onDelete = null
             )
         }
+
+        if (deletingVoucherId != null) {
+            DeleteConfirmDialog(
+                title = stringResource(R.string.voucher_delete_dialog_title),
+                message = stringResource(R.string.voucher_delete_dialog_message),
+                onDismiss = {
+                    deletingVoucherId = null
+                },
+                onConfirm = {
+                    val vId = deletingVoucherId
+                    deletingVoucherId = null
+                    if (vId != null) {
+                        viewModel.deleteVoucher(vId)
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -231,12 +258,14 @@ fun VoucherCard(
     onEditNumber: (BetItem) -> Unit,
     onDeleteNumber: (Long) -> Unit,
     onAddNumber: (() -> Unit)? = null,
+    onDeleteVoucher: () -> Unit = {},
     onCopy: () -> Unit,
     onShare: () -> Unit,
     onPrint: () -> Unit
 ) {
     var menuNumberId by rememberSaveable(voucher.id) { mutableStateOf<Long?>(null) }
     val menuTitle = stringResource(R.string.voucher_number_menu_title)
+    val haptic = LocalHapticFeedback.current
 
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -244,93 +273,117 @@ fun VoucherCard(
         modifier = Modifier
             .fillMaxWidth()
             .border(1.dp, LuckyBorder, RoundedCornerShape(12.dp))
+            .combinedClickable(
+                onClick = {},
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onDeleteVoucher()
+                }
+            )
+            .testTag("voucher_card_${voucher.id}")
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Header
-            Row(
+            // Top Header Section (Voucher No., Time, and Agent ID/Name) — clicking or long-pressing triggers voucher delete confirmation
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(LuckyHeader)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = "အမှတ် ${voucher.no}",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
+                    .combinedClickable(
+                        onClick = onDeleteVoucher,
+                        onLongClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onDeleteVoucher()
+                        }
                     )
-                    Text(
-                        text = "အချိန် : ${voucher.time}",
-                        color = Color.White.copy(alpha = 0.9f),
-                        fontSize = 11.sp
-                    )
-                }
-
-                if (onAddNumber != null) {
-                    IconButton(
-                        onClick = onAddNumber,
-                        modifier = Modifier
-                            .size(28.dp)
-                            .testTag("voucher_add_number_btn_${voucher.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = stringResource(R.string.voucher_add_number),
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-            }
-
-            // Agent Info Row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(LuckyCardDark)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .testTag("voucher_header_${voucher.id}")
             ) {
+                // Header Row: အမှတ် ... | အချိန် : ...
                 Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(LuckyHeader)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(26.dp)
-                            .clip(CircleShape)
-                            .background(LuckyHeader),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
                     ) {
                         Text(
-                            text = voucher.agent.take(1),
+                            text = "အမှတ် ${voucher.no}",
                             color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        Text(
+                            text = "အချိန် : ${voucher.time}",
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontSize = 11.sp
+                        )
+                    }
+
+                    if (onAddNumber != null) {
+                        IconButton(
+                            onClick = onAddNumber,
+                            modifier = Modifier
+                                .size(28.dp)
+                                .testTag("voucher_add_number_btn_${voucher.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = stringResource(R.string.voucher_add_number),
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Agent Info Row: အိုင်ဒီ : ... , အမည် : ... | X ကွက်
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(LuckyCardDark)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .testTag("voucher_agent_header_${voucher.id}"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(26.dp)
+                                .clip(CircleShape)
+                                .background(LuckyHeader),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = voucher.agent.take(1),
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Text(
+                            text = "အိုင်ဒီ : ${voucher.agentId} , အမည် : ${voucher.agent}",
+                            color = LuckyTextPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
                         )
                     }
 
                     Text(
-                        text = "အိုင်ဒီ : ${voucher.agentId} , အမည် : ${voucher.agent}",
-                        color = LuckyTextPrimary,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp
+                        text = "${voucher.items.size} ကွက်",
+                        color = LuckyTextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
                     )
                 }
-
-                Text(
-                    text = "${voucher.items.size} ကွက်",
-                    color = LuckyTextSecondary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
             }
 
             HorizontalDivider(color = LuckyBorder, thickness = 0.5.dp)

@@ -240,6 +240,17 @@ class StorageRepository(context: Context) {
     }
 
     /**
+     * Deletes the entire Voucher matching [voucherId] along with all of its associated BetItems (CASCADE).
+     */
+    fun deleteVoucherById(voucherId: Long): List<Voucher>? {
+        val current = loadVouchers()
+        if (current.none { it.id == voucherId }) return null
+        val updated = current.filter { it.id != voucherId }
+        saveVouchers(updated)
+        return updated
+    }
+
+    /**
      * Deletes ONLY the single number entry matching [numberId] (equivalent to DELETE ... WHERE id = :numberId).
      * Never deletes the parent Voucher object even when its last number is removed.
      */

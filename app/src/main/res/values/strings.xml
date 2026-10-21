@@ -36,6 +36,8 @@
     <string name="confirm_delete_title">ဖျက်မည်လား?</string>
     <string name="action_edit">ပြင်မည်</string>
     <string name="voucher_number_menu_title">ဂဏန်းပြင်ဆင်ရန်/ဖျက်ရန်</string>
+    <string name="voucher_delete_dialog_title">ဘောင်ချာ ဖျက်ရန်</string>
+    <string name="voucher_delete_dialog_message">ဤဘောင်ချာတစ်ခုလုံးအား အပြီးဖျက်မည်လား?</string>
     <string name="vouchers_screen_title">ဘောင်ချာများ</string>
     <string name="voucher_empty_numbers">ဂဏန်း မရှိသေးပါ</string>
     <string name="voucher_add_number">ဂဏန်းထည့်ရန်</string>

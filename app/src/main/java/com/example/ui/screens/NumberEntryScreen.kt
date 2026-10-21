@@ -735,15 +735,17 @@ fun NumberEntryScreen(
                         text = "ဖျက်",
                         bgColor = LuckyDanger,
                         textColor = Color.White,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).testTag("keypad_delete_btn"),
                         onClick = {
-                            if (activeField == "NUMBER" && inputNumber.isNotEmpty()) {
-                                inputNumber = inputNumber.dropLast(1)
-                            } else if (activeField == "AMOUNT" && inputAmount.isNotEmpty()) {
+                            if (activeField == "NUMBER") {
+                                if (inputNumber.isNotEmpty()) {
+                                    inputNumber = inputNumber.dropLast(1)
+                                }
+                            } else if (activeField == "AMOUNT") {
                                 shouldOverwriteAmount = false
-                                inputAmount = inputAmount.dropLast(1)
-                            } else {
-                                viewModel.removeLastEntryItem()
+                                if (inputAmount.isNotEmpty()) {
+                                    inputAmount = inputAmount.dropLast(1)
+                                }
                             }
                         }
                     )

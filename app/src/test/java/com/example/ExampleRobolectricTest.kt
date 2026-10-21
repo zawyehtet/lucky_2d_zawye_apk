@@ -432,8 +432,20 @@ class ExampleRobolectricTest {
         assertTrue(viewModel.commitCurrentVoucher())
         viewModel.setWinningNumber("25")
 
-        // Sync active rounds into Daily Summary records
+        // Strict Daily Settlement Persistence ("ရက်ချုပ်" မသိမ်းမချင်း လုံးဝ မပြရန်):
+        // Entering winning numbers or calculating preview profit/loss must NOT populate settled records
+        viewModel.calculateSettlementForSession(session = "မနက်ပိုင်း", winningNum = "15")
+        viewModel.calculateSettlementForSession(session = "ညနေပိုင်း", winningNum = "25")
         viewModel.syncDailyRecordsFromCurrentDateRounds()
+        assertTrue(viewModel.settled.value.isEmpty())
+
+        // Records ONLY appear after explicitly saving via "သိမ်းမည်" (lockAndSaveBrakeSettlement)
+        viewModel.setSession("မနက်ပိုင်း")
+        viewModel.lockAndSaveBrakeSettlement()
+        assertEquals(1, viewModel.settled.value.size)
+
+        viewModel.setSession("ညနေပိုင်း")
+        viewModel.lockAndSaveBrakeSettlement()
         assertEquals(2, viewModel.settled.value.size)
 
         val morningRecord = viewModel.settled.value.first { it.session == "မနက်ပိုင်း" }
@@ -656,6 +668,22 @@ class ExampleRobolectricTest {
         val zeroBrakeLayoff = viewModel.layoffs.value.first()
         assertEquals(2, zeroBrakeLayoff.items.size)
         assertEquals(16000L, zeroBrakeLayoff.total)
+
+        // Verify Keypad "ဖျက်" Guard: never deletes confirmed betting rows from entryItems
+        viewModel.addEntryItems(listOf(BetItem("12", 1000L), BetItem("34", 2000L)))
+        assertEquals(2, viewModel.entryItems.value.size)
+        viewModel.removeLastEntryItem()
+        assertEquals(2, viewModel.entryItems.value.size)
+
+        // Verify Voucher Deletion Dialog strings and deleteVoucher(voucherId) CASCADE removal
+        assertEquals("ဘောင်ချာ ဖျက်ရန်", context.getString(R.string.voucher_delete_dialog_title))
+        assertEquals("ဤဘောင်ချာတစ်ခုလုံးအား အပြီးဖျက်မည်လား?", context.getString(R.string.voucher_delete_dialog_message))
+        val voucherToDelete = viewModel.vouchers.value.first()
+        assertTrue(viewModel.deleteVoucher(voucherToDelete.id))
+        assertFalse(viewModel.deleteVoucher(voucherToDelete.id)) // duplicate tap guarded
+        assertTrue(viewModel.vouchers.value.none { it.id == voucherToDelete.id })
+        assertTrue(StorageRepository(app).loadVouchers().none { it.id == voucherToDelete.id })
+        assertEquals(0L, viewModel.getAggregatedNumbers().sumOf { it.totalBet })
     }
 }
 

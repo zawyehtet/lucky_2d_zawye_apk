@@ -517,7 +517,7 @@ fun BrakeScreen(
                                             .testTag("brake_lock_save_settlement_btn")
                                     ) {
                                         Text(
-                                            text = if (hasValidWinNum) "သိမ်းရန်" else "+ သိမ်းမည်",
+                                            text = stringResource(R.string.action_save),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             maxLines = 1,
