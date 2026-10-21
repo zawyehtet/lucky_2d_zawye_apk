@@ -1297,10 +1297,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Locks and saves the current round's settlement from the Brake ("တင်ကွက်များ") screen as an immutable
      * record in Room DB, then navigates directly to "ရက်ချုပ်အားလုံး" (Screen.SETTLEMENT).
+     * Ledger persistence condition: requires an active round and a valid 2-digit winning number.
      */
     fun lockAndSaveBrakeSettlement() {
         if (!hasActiveRound) {
             showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
+            return
+        }
+        if (!hasSavedWinningNumberForCurrentSession()) {
+            showToast("ထွက်ဂဏန်း အရင်ထည့်ပါ")
             return
         }
         val date = _selectedDate.value
@@ -1358,8 +1363,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Synchronizes active rounds that have bets or a winning number on the selected date into `_settled`
-     * so they appear in the "အကြိမ်ရေအလိုက် အမြတ်ရှုံး တွက်ချက်မှု" table as editable/deletable records,
+     * Synchronizes active rounds that have a saved winning number on the selected date into `_settled`
+     * so they appear in the "ရက်ချုပ်အားလုံး" table as editable/deletable records,
      * without recreating deleted records or overwriting manually edited records.
      */
     fun syncDailyRecordsFromCurrentDateRounds() {
@@ -1373,11 +1378,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (roundKey in deletedRoundKeys) continue
 
             val existing = currentList.firstOrNull { it.date == round.date && it.session == round.session }
-            val hasActivity = _vouchers.value.any { it.date == round.date && it.session == round.session } ||
-                _wins.value.any { it.date == round.date && it.session == round.session }
+            val hasWin = _wins.value.any {
+                it.date == round.date && it.session == round.session && it.n.length == 2 && it.n.all { c -> c.isDigit() }
+            }
 
             if (existing != null) {
-                if (existing.id !in manuallyEditedRecordIds && hasActivity) {
+                if (existing.id !in manuallyEditedRecordIds && hasWin) {
                     if (existing.totalRetained != round.totalBet ||
                         existing.commission != round.commission ||
                         existing.retainedNet != round.netAmount ||
@@ -1397,7 +1403,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         changed = true
                     }
                 }
-            } else if (hasActivity) {
+            } else if (hasWin) {
                 val newRec = SettledRecord(
                     id = System.currentTimeMillis() + (nextSettledIdCounter++),
                     date = round.date,
@@ -1567,11 +1573,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         showToast("စာရင်းချုပ် မှတ်တမ်းများကို ရှင်းထုတ်ပြီးပါပြီ")
     }
 
-    /**
-     * Generates both TXT and CSV summaries of all daily settlements ("ရက်ချုပ်အားလုံး")
-     * for local storage access and returns the generated CSV file.
-     */
-    fun exportDailySettlementsToFile(context: android.content.Context): java.io.File {
+    fun buildDailySettlementsCsvSummary(): String {
         val records = _settled.value
         val totalProfitLoss = records.sumOf { it.profitLoss }
         val signedGrandTotal = when {
@@ -1579,8 +1581,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             totalProfitLoss < 0L -> "$totalProfitLoss"
             else -> "0"
         }
-
-        val csvContent = buildString {
+        return buildString {
             appendLine("စဉ်,ရက်စွဲ,အပိုင်း,ပေါက်သီး,အမြတ်ငွေ")
             records.forEachIndexed { idx, rec ->
                 val signedPl = when {
@@ -1592,8 +1593,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             appendLine("စုစုပေါင်းစာရင်းချုပ်,,,,$signedGrandTotal")
         }
+    }
 
-        val txtContent = buildString {
+    fun buildDailySettlementsTextSummary(): String {
+        val records = _settled.value
+        val totalProfitLoss = records.sumOf { it.profitLoss }
+        val signedGrandTotal = when {
+            totalProfitLoss > 0L -> "+$totalProfitLoss"
+            totalProfitLoss < 0L -> "$totalProfitLoss"
+            else -> "0"
+        }
+        return buildString {
             appendLine("ရက်ချုပ်အားလုံး")
             appendLine("----------------------------------------")
             appendLine("စဉ် | ရက်စွဲ | အပိုင်း | အမြတ်ငွေ")
@@ -1609,6 +1619,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             appendLine("----------------------------------------")
             appendLine("စုစုပေါင်းစာရင်းချုပ် = $signedGrandTotal")
         }
+    }
+
+    /**
+     * Generates both TXT and CSV summaries of all daily settlements ("ရက်ချုပ်အားလုံး")
+     * for local storage access and optionally shares via Android Share Intent (Intent.ACTION_SEND).
+     */
+    fun exportDailySettlementsToFile(
+        context: android.content.Context,
+        launchShare: Boolean = false,
+        shareAsCsv: Boolean = false
+    ): java.io.File {
+        val csvContent = buildDailySettlementsCsvSummary()
+        val txtContent = buildDailySettlementsTextSummary()
 
         val exportDir = context.getExternalFilesDir(null) ?: context.filesDir
         exportDir.mkdirs()
@@ -1617,7 +1640,107 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         csvFile.writeText(csvContent, Charsets.UTF_8)
         txtFile.writeText(txtContent, Charsets.UTF_8)
         soundManager.playSave()
-        showToast("ဖိုင်သိမ်းပြီးပါပြီ: ${csvFile.name}")
+        showToast("ဖိုင်သိမ်းပြီးပါပြီ: ${if (shareAsCsv) csvFile.name else txtFile.name}")
+        if (launchShare) {
+            val payload = if (shareAsCsv) csvContent else txtContent
+            com.example.ui.components.ShareHelper.shareText(
+                context = context,
+                text = payload,
+                title = "ရက်ချုပ်အားလုံး Export"
+            )
+        }
+        return csvFile
+    }
+
+    /**
+     * Exports the current session's ledger table data (တင်ကွက် / ဝယ်ရောင်း မှတ်တမ်းများ)
+     * as both CSV and TXT files in local storage and optionally shares via Intent.ACTION_SEND.
+     */
+    fun exportCurrentSessionLedgerToFile(context: android.content.Context, launchShare: Boolean = false): java.io.File {
+        val date = _selectedDate.value
+        val sess = _selectedSession.value.ifBlank { "-" }
+        val activeBrake = if (_currentBrakeInput.value.isNotBlank()) {
+            parseAmountOrZero(_currentBrakeInput.value)
+        } else {
+            _settings.value.brakeLimit
+        }
+        val summaries = getAggregatedNumbers()
+        val winNum = getWinningNumberForCurrentSession()
+        val calc = calculateSettlementForSession(date = date, session = sess, winningNum = winNum)
+        val sessionLayoffs = getFilteredLayoffs()
+
+        val keptItems = summaries.mapNotNull { s ->
+            val kept = if (activeBrake > 0L) minOf(s.netAmount, activeBrake) else s.netAmount
+            if (kept > 0L) s.n to kept else null
+        }
+        val overflowItems = if (activeBrake > 0L) {
+            summaries.mapNotNull { s ->
+                if (s.netAmount > activeBrake) s.n to (s.netAmount - activeBrake) else null
+            }
+        } else emptyList()
+
+        val csvContent = buildString {
+            appendLine("အမျိုးအစား,ဂဏန်း,ပမာဏ,ရက်စွဲ,အပိုင်း")
+            keptItems.forEach { (n, a) ->
+                appendLine("လက်ခံကွက်,$n,$a,$date,$sess")
+            }
+            overflowItems.forEach { (n, a) ->
+                appendLine("တင်ကွက်,$n,$a,$date,$sess")
+            }
+            sessionLayoffs.forEachIndexed { batchIdx, rec ->
+                rec.items.forEach { itm ->
+                    appendLine("တင်ပြီးမှတ်တမ်း #${batchIdx + 1},${itm.n},${itm.a},${rec.date},${rec.session}")
+                }
+            }
+            appendLine("စုစုပေါင်း,,${calc.totalRetained},$date,$sess")
+            appendLine("ကော်,,${calc.commission},$date,$sess")
+            appendLine("နှုတ်ပြီး,,${calc.retainedNet},$date,$sess")
+            appendLine("ပေါက်သီး,${winNum.ifEmpty { "-" }},${calc.payout},$date,$sess")
+            appendLine("အမြတ်ငွေ,,${calc.profitLoss},$date,$sess")
+        }
+
+        val txtContent = buildString {
+            appendLine("တင်ကွက် / ဝယ်ရောင်း မှတ်တမ်းများ")
+            appendLine("နေ့စွဲ : $date | အပိုင်း : $sess | ဘရိတ် : $activeBrake")
+            if (winNum.isNotEmpty()) {
+                appendLine("ထွက်ဂဏန်း : $winNum")
+            }
+            appendLine("----------------------------------------")
+            appendLine("[လက်ခံကွက် (${keptItems.size})]")
+            keptItems.forEach { (n, a) -> appendLine("$n = $a") }
+            appendLine("လက်ခံကွက် စုစုပေါင်း = ${keptItems.sumOf { it.second }}")
+            appendLine("----------------------------------------")
+            appendLine("[တင်ကွက် (${overflowItems.size})]")
+            overflowItems.forEach { (n, a) -> appendLine("$n = $a") }
+            appendLine("တင်ကွက် စုစုပေါင်း = ${overflowItems.sumOf { it.second }}")
+            if (sessionLayoffs.isNotEmpty()) {
+                appendLine("----------------------------------------")
+                appendLine("[တင်ကွက်မှတ်တမ်း (${sessionLayoffs.size} ကြိမ်)]")
+                sessionLayoffs.forEachIndexed { idx, rec ->
+                    appendLine("${idx + 1}. (${rec.time}) စုစုပေါင်း = ${rec.total}")
+                    rec.items.forEach { itm -> appendLine("   ${itm.n}=${itm.a}") }
+                }
+            }
+            appendLine("----------------------------------------")
+            appendLine("စုစုပေါင်း = ${calc.totalRetained}")
+            appendLine("ကော် = ${calc.commission}")
+            appendLine("နှုတ်ပြီး = ${calc.retainedNet}")
+            appendLine("ပေါက်သီး = ${calc.payout}")
+            val sign = if (calc.profitLoss > 0L) "+" else ""
+            appendLine("အမြတ်ငွေ = $sign${calc.profitLoss}")
+        }
+
+        val exportDir = context.getExternalFilesDir(null) ?: context.filesDir
+        exportDir.mkdirs()
+        val csvFile = java.io.File(exportDir, "session_ledger_export.csv")
+        val txtFile = java.io.File(exportDir, "session_ledger_export.txt")
+        csvFile.writeText(csvContent, Charsets.UTF_8)
+        txtFile.writeText(txtContent, Charsets.UTF_8)
+        soundManager.playSave()
+        showToast("မှတ်တမ်း Export သိမ်းပြီးပါပြီ: ${csvFile.name}")
+        if (launchShare) {
+            com.example.ui.components.ShareHelper.shareText(context, txtContent, "မှတ်တမ်း Export မျှဝေမည်")
+        }
         return csvFile
     }
 

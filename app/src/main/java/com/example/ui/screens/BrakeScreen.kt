@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,6 +17,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -23,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.ui.MainViewModel
@@ -40,6 +43,7 @@ fun BrakeScreen(
     viewModel: MainViewModel,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val selectedSession by viewModel.selectedSession.collectAsState()
     val sessions by viewModel.sessions.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
@@ -141,7 +145,33 @@ fun BrakeScreen(
                 selectedSession = selectedSession,
                 sessions = sessions,
                 onSessionSelected = { viewModel.setSession(it) },
-                onBack = { viewModel.goBack() }
+                onBack = { viewModel.goBack() },
+                actions = {
+                    Button(
+                        onClick = { viewModel.exportCurrentSessionLedgerToFile(context, launchShare = true) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.White,
+                            contentColor = LuckyHeader
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .height(32.dp)
+                            .testTag("export_ledger_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = "Export",
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Export",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             )
 
             // Header section: "ဘရိတ် : [Amount]", Date, "အပိုင်း : [Session]", and Post-Draw Winning Number box
@@ -636,63 +666,103 @@ fun BrakeScreen(
             }
         }
 
-        // Layoff Confirm Dialog
+        // Layoff Selection Dialog ("ဒိုင်သို့ တင်ကွက် ရွေးချယ်ပါ")
         if (showConfirmDialog) {
             AlertDialog(
                 onDismissRequest = { showConfirmDialog = false },
-                containerColor = MaterialTheme.colorScheme.surface,
-                shape = RoundedCornerShape(14.dp),
+                containerColor = LuckyCard,
+                shape = RoundedCornerShape(16.dp),
                 title = {
                     Text(
                         text = stringResource(R.string.layoff_confirm_title),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = LuckyTextPrimary,
                         fontSize = 18.sp,
-                        lineHeight = 26.sp,
+                        lineHeight = 1.5.em,
                         fontWeight = FontWeight.Bold
                     )
                 },
                 text = {
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
                             text = stringResource(R.string.layoff_confirm_message, fmt(activeBrake)),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = LuckyTextSecondary,
                             fontSize = 14.sp,
-                            lineHeight = 22.sp
+                            lineHeight = 1.5.em
                         )
                         Text(
                             text = stringResource(R.string.layoff_confirm_summary, fmt(totalLayoff), rightLayoffList.size),
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = LuckyTextPrimary,
                             fontSize = 14.sp,
-                            lineHeight = 22.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                },
-                confirmButton = {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        com.example.ui.components.CompactTextButton(
-                            text = stringResource(R.string.action_layoff_cancel),
-                            onClick = { showConfirmDialog = false },
-                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            horizontalPadding = 16.dp,
-                            modifier = Modifier.testTag("layoff_cancel_btn")
+                            lineHeight = 1.5.em,
+                            fontWeight = FontWeight.Bold
                         )
 
-                        com.example.ui.components.CompactFilledButton(
-                            text = stringResource(R.string.action_layoff_confirm),
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // Option 1: အားလုံးတင်မည်
+                        Button(
                             onClick = {
                                 showConfirmDialog = false
                                 viewModel.executeLayoff(isAll = true)
                             },
-                            containerColor = LuckyDanger,
-                            contentColor = Color.White,
-                            horizontalPadding = 16.dp,
-                            modifier = Modifier.testTag("layoff_all_btn")
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = LuckyHeader,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(46.dp)
+                                .testTag("layoff_all_btn")
+                        ) {
+                            Text(
+                                text = stringResource(R.string.action_layoff_all),
+                                fontSize = 15.sp,
+                                lineHeight = 1.5.em,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // Option 2: အကွက် ၃၀ တင်မည်
+                        Button(
+                            onClick = {
+                                showConfirmDialog = false
+                                viewModel.executeLayoff(isAll = false)
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = LuckyDanger,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(46.dp)
+                                .testTag("layoff_30_btn")
+                        ) {
+                            Text(
+                                text = stringResource(R.string.action_layoff_30),
+                                fontSize = 15.sp,
+                                lineHeight = 1.5.em,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(
+                        onClick = { showConfirmDialog = false },
+                        modifier = Modifier.testTag("layoff_cancel_btn")
+                    ) {
+                        Text(
+                            text = stringResource(R.string.action_layoff_cancel),
+                            color = LuckyTextSecondary,
+                            fontSize = 14.sp,
+                            lineHeight = 1.5.em,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }

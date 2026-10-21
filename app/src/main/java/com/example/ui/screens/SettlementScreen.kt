@@ -75,6 +75,7 @@ fun SettlementScreen(viewModel: MainViewModel) {
     var activeMenuRecordId by rememberSaveable { mutableStateOf<Long?>(null) }
     var recordToDeleteId by rememberSaveable { mutableStateOf<Long?>(null) }
     var showClearAllConfirm by rememberSaveable { mutableStateOf(false) }
+    var showExportDialog by rememberSaveable { mutableStateOf(false) }
 
     val recordToDelete = remember(settledRecords, recordToDeleteId) {
         settledRecords.firstOrNull { it.id == recordToDeleteId }
@@ -135,7 +136,8 @@ fun SettlementScreen(viewModel: MainViewModel) {
                 ) {
                     Button(
                         onClick = {
-                            viewModel.exportDailySettlementsToFile(context)
+                            viewModel.exportDailySettlementsToFile(context, launchShare = true, shareAsCsv = false)
+                            showExportDialog = true
                         },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.White,
@@ -148,7 +150,7 @@ fun SettlementScreen(viewModel: MainViewModel) {
                             .testTag("export_settlements_btn")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Download,
+                            imageVector = Icons.Default.Share,
                             contentDescription = "Export",
                             modifier = Modifier.size(15.dp)
                         )
@@ -378,6 +380,102 @@ fun SettlementScreen(viewModel: MainViewModel) {
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp)
                 .padding(bottom = 8.dp)
+        )
+    }
+
+    // Export Format & Share Dialog ("ရက်ချုပ်အားလုံး Export")
+    if (showExportDialog) {
+        AlertDialog(
+            onDismissRequest = { showExportDialog = false },
+            containerColor = LuckyCard,
+            shape = RoundedCornerShape(16.dp),
+            title = {
+                Text(
+                    text = "ရက်ချုပ်အားလုံး Export (မျှဝေရန်)",
+                    color = LuckyTextPrimary,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "နေ့စဉ်စာရင်းချုပ် မှတ်တမ်း (${settledRecords.size} ခု) ကို မျှဝေမည့် ပုံစံ ရွေးချယ်ပါ -",
+                        color = LuckyTextSecondary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Button(
+                        onClick = {
+                            showExportDialog = false
+                            viewModel.exportDailySettlementsToFile(context, launchShare = true, shareAsCsv = false)
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = LuckyHeader,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .testTag("export_share_txt_btn")
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Text (စာသား) ပုံစံဖြင့် မျှဝေမည်", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = {
+                            showExportDialog = false
+                            viewModel.exportDailySettlementsToFile(context, launchShare = true, shareAsCsv = true)
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = LuckySuccess,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .testTag("export_share_csv_btn")
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("CSV ပုံစံဖြင့် မျှဝေမည်", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            showExportDialog = false
+                            ShareHelper.copyToClipboard(
+                                context = context,
+                                text = viewModel.buildDailySettlementsTextSummary(),
+                                label = "ရက်ချုပ်အားလုံး"
+                            )
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp)
+                            .testTag("export_copy_txt_btn")
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, tint = LuckyHeader, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Clipboard သို့ ကူးယူမည်", color = LuckyHeader, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showExportDialog = false }) {
+                    Text(stringResource(R.string.action_close), color = LuckyTextSecondary, fontWeight = FontWeight.Bold)
+                }
+            }
         )
     }
 

@@ -589,11 +589,22 @@ class ExampleRobolectricTest {
         assertEquals("Power by Lcky2d3d ShweKhinMyay", context.getString(R.string.home_footer_branding))
 
         // Verify winning number volume on Numbers (လက်ခံကွက် + တင်ကွက်) and kept winning amount within brake limit on Brake
+        assertEquals("ဒိုင်သို့ တင်ကွက် ရွေးချယ်ပါ", context.getString(R.string.layoff_confirm_title))
+        assertEquals("အားလုံးတင်မည်", context.getString(R.string.action_layoff_all))
+        assertEquals("အကွက် ၃၀ တင်မည်", context.getString(R.string.action_layoff_30))
+        assertEquals("မလုပ်တော့ပါ", context.getString(R.string.action_layoff_cancel))
+
         viewModel.addSession("မနက်ပိုင်း", 10.0, 80.0)
         viewModel.addAgent("ကိုအောင်", 10.0, 80.0)
         viewModel.setEntryAgent(viewModel.agents.value.first())
         viewModel.addEntryItems(listOf(BetItem("47", 12000L), BetItem("15", 4000L)))
         assertTrue(viewModel.commitCurrentVoucher())
+
+        // Pre-draw (no winning number yet): sync and lockAndSaveBrakeSettlement do not persist unsettled round
+        viewModel.syncDailyRecordsFromCurrentDateRounds()
+        assertTrue(viewModel.settled.value.isEmpty())
+        viewModel.lockAndSaveBrakeSettlement()
+        assertTrue(viewModel.settled.value.isEmpty())
 
         viewModel.updateBrakeLimit("5000")
         viewModel.executeLayoff(isAll = true) // lays off 7000 on "47", leaving netAmount = 5000
@@ -604,10 +615,16 @@ class ExampleRobolectricTest {
         // Kept amount within configured brake limit (5000) on Brake screen is 5000
         assertEquals(5000L, viewModel.getKeptWinningAmountForBrake("47"))
 
+        // Export current session ledger (တင်ကွက် / ဝယ်ရောင်း မှတ်တမ်းများ Export)
+        val exportedLedgerCsv = viewModel.exportCurrentSessionLedgerToFile(context, launchShare = false)
+        assertTrue(exportedLedgerCsv.exists())
+        assertTrue(exportedLedgerCsv.readText().contains("လက်ခံကွက်"))
+
         // Lock and save Brake settlement -> navigates to ရက်ချုပ်အားလုံး (Screen.SETTLEMENT) and exports CSV/TXT
         viewModel.lockAndSaveBrakeSettlement()
         assertEquals(Screen.SETTLEMENT, viewModel.currentScreen.value)
-        val exportedCsv = viewModel.exportDailySettlementsToFile(context)
+        assertEquals(1, viewModel.settled.value.size)
+        val exportedCsv = viewModel.exportDailySettlementsToFile(context, launchShare = false)
         assertTrue(exportedCsv.exists())
         assertTrue(exportedCsv.readText().contains("မနက်ပိုင်း"))
     }

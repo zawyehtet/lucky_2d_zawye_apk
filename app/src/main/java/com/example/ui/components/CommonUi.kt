@@ -382,6 +382,7 @@ fun AppHeader(
     onSessionSelected: (String) -> Unit,
     onBack: (() -> Unit)? = null,
     showSessionPill: Boolean = true,
+    actions: (@Composable RowScope.() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -427,12 +428,20 @@ fun AppHeader(
                 )
             }
 
-            if (showSessionPill) {
-                SessionPill(
-                    selectedSession = selectedSession,
-                    sessions = sessions,
-                    onSessionSelected = onSessionSelected
-                )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (actions != null) {
+                    actions()
+                }
+                if (showSessionPill) {
+                    SessionPill(
+                        selectedSession = selectedSession,
+                        sessions = sessions,
+                        onSessionSelected = onSessionSelected
+                    )
+                }
             }
         }
     }
@@ -803,12 +812,17 @@ object ShareHelper {
     }
 
     fun shareText(context: Context, text: String, title: String = "ဘောင်ချာ မျှဝေမည်") {
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, text)
+        runCatching {
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, text)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val chooser = Intent.createChooser(intent, title).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chooser)
         }
-        val chooser = Intent.createChooser(intent, title)
-        context.startActivity(chooser)
     }
 
     fun printText(context: Context, text: String) {

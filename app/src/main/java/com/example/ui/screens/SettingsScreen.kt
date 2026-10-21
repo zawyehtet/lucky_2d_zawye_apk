@@ -97,9 +97,6 @@ fun SettingsScreen(
     var currentPassInput by rememberSaveable { mutableStateOf("") }
     var newPassInput by rememberSaveable { mutableStateOf("") }
 
-    // Guarantor ("အာမခံပေးသူ =") state starts clean with no dummy text
-    var guarantorInput by rememberSaveable { mutableStateOf("") }
-
     // Winning number confirmation & history long-press states
     var showWinSaveConfirm by rememberSaveable { mutableStateOf(false) }
     var activeWinMenuKey by rememberSaveable { mutableStateOf<String?>(null) }
@@ -314,50 +311,6 @@ fun SettingsScreen(
                                 checkedTrackColor = LuckyHeader
                             ),
                             modifier = Modifier.testTag("sound_switch")
-                        )
-                    }
-                }
-            }
-
-            // 6. "အာမခံပေးသူ =" text field container at the bottom
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, LuckyBorder, RoundedCornerShape(12.dp)),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = LuckyCard),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            text = "အာမခံပေးသူ =",
-                            color = LuckyTextPrimary,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        OutlinedTextField(
-                            value = guarantorInput,
-                            onValueChange = { guarantorInput = it },
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color.White,
-                                unfocusedContainerColor = Color.White,
-                                focusedTextColor = LuckyTextPrimary,
-                                unfocusedTextColor = LuckyTextPrimary,
-                                focusedBorderColor = LuckyHeader,
-                                unfocusedBorderColor = LuckyBorder
-                            ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .soundOnInputFocus()
-                                .testTag("setting_guarantor_input")
                         )
                     }
                 }

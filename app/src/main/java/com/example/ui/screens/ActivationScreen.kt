@@ -45,6 +45,7 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.example.security.LicenseManager
 import com.example.ui.components.CloverLogo
@@ -116,7 +117,7 @@ fun ActivationScreen(
         focusManager.clearFocus()
         val normalized = LicenseManager.normalizeKeyInput(rawKeyInput)
         if (normalized.length < 12) {
-            errorMessage = "Activation Key ၁၂ လုံး အပြည့်ထည့်သွင်းပါ (XXXX-XXXX-XXXX)"
+            errorMessage = "အသက်သွင်းကုဒ် ၁၂ လုံး အပြည့်ထည့်သွင်းပါ (XXXX-XXXX-XXXX)"
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             return
         }
@@ -136,7 +137,7 @@ fun ActivationScreen(
                 onActivated()
             } else {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                errorMessage = "Activation Key မှားယွင်းနေပါသည်။ ပြန်လည်စစ်ဆေးပါ။"
+                errorMessage = "အသက်သွင်းကုဒ် မှားယွင်းနေပါသည်။ ပြန်လည်စစ်ဆေးပါ။"
             }
         }
     }
@@ -175,18 +176,18 @@ fun ActivationScreen(
                 text = "ဆော့ဝဲလ် အသက်သွင်းခြင်း",
                 color = LuckyTextPrimary,
                 fontSize = 21.sp,
-                lineHeight = 30.sp,
+                lineHeight = 1.5.em,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.testTag("activation_title_mm")
             )
 
             Text(
-                text = "Device Activation (One-Time Setup)",
+                text = "တစ်ကြိမ်သာ အသက်သွင်းရန် လိုအပ်ပါသည်",
                 color = LuckyTextSecondary,
                 fontSize = 13.sp,
-                lineHeight = 18.sp,
-                fontWeight = FontWeight.Medium,
+                lineHeight = 1.5.em,
+                fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center
             )
 
@@ -221,9 +222,10 @@ fun ActivationScreen(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "သင့်စက်၏ Device ID",
+                                text = "သင့်စက်အမှတ်",
                                 color = LuckyTextPrimary,
                                 fontSize = 14.sp,
+                                lineHeight = 1.5.em,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -262,7 +264,7 @@ fun ActivationScreen(
                                         clipboard?.setPrimaryClip(ClipData.newPlainText("Device ID", deviceId))
                                         Toast.makeText(
                                             context,
-                                            "Device ID ကူးယူပြီးပါပြီ ($deviceId)",
+                                            "စက်အမှတ် ကူးယူပြီးပါပြီ ($deviceId)",
                                             Toast.LENGTH_SHORT
                                         ).show()
                                     },
@@ -278,13 +280,14 @@ fun ActivationScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.ContentCopy,
-                                        contentDescription = "Copy Device ID",
+                                        contentDescription = "စက်အမှတ် ကူးယူရန်",
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "Copy ID",
+                                        text = "ကူးယူမည်",
                                         fontSize = 12.sp,
+                                        lineHeight = 1.5.em,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -292,10 +295,12 @@ fun ActivationScreen(
                         }
 
                         Text(
-                            text = "သင့် Device ID ကို Admin ထံပေးပို့ပြီး Activation Key ရယူပါ။\nSend your Device ID to admin to get your activation key.",
+                            text = "သင့်စက်အမှတ်ကို Admin ထံပေးပို့ပြီး အသက်သွင်းကုဒ် ရယူပါ",
                             color = LuckyTextSecondary,
-                            fontSize = 12.sp,
-                            lineHeight = 18.sp
+                            fontSize = 13.sp,
+                            lineHeight = 1.5.em,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.testTag("activation_helper_text")
                         )
                     }
 
@@ -319,9 +324,10 @@ fun ActivationScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Text(
-                                    text = "Activation Key ထည့်သွင်းရန်",
+                                    text = "အသက်သွင်းကုဒ် ထည့်သွင်းရန်",
                                     color = LuckyTextPrimary,
                                     fontSize = 14.sp,
+                                    lineHeight = 1.5.em,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -343,15 +349,16 @@ fun ActivationScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.ContentPaste,
-                                    contentDescription = "Paste Key",
+                                    contentDescription = "ကူးထည့်ရန်",
                                     tint = LuckyHeader,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "PASTE",
+                                    text = "ကူးထည့်မည်",
                                     color = LuckyHeader,
                                     fontSize = 12.sp,
+                                    lineHeight = 1.5.em,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -407,6 +414,7 @@ fun ActivationScreen(
                                 text = errorMessage.orEmpty(),
                                 color = LuckyDanger,
                                 fontSize = 12.sp,
+                                lineHeight = 1.5.em,
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.testTag("activation_error_text")
                             )
@@ -418,7 +426,7 @@ fun ActivationScreen(
                         onClick = { triggerActivation() },
                         enabled = !isVerifying && rawKeyInput.isNotBlank(),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = LuckySuccess,
+                            containerColor = LuckyHeader,
                             contentColor = Color.White,
                             disabledContainerColor = LuckyBorder,
                             disabledContentColor = LuckyTextMuted
@@ -439,6 +447,7 @@ fun ActivationScreen(
                             Text(
                                 text = "စစ်ဆေးနေပါသည်...",
                                 fontSize = 15.sp,
+                                lineHeight = 1.5.em,
                                 fontWeight = FontWeight.Bold
                             )
                         } else {
@@ -449,8 +458,9 @@ fun ActivationScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "အသက်သွင်းမည် (Activate App)",
+                                text = "အသက်သွင်းမည်",
                                 fontSize = 15.sp,
+                                lineHeight = 1.5.em,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -478,14 +488,16 @@ fun ActivationScreen(
                         color = LuckyTextPrimary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
+                        lineHeight = 1.5.em,
                         textAlign = TextAlign.Center
                     )
                 },
                 text = {
                     Text(
-                        text = "သင့်ဖုန်းအတွက် လိုင်စင်အတည်ပြုပြီးပါပြီ။ နောက်တစ်ကြိမ် ပြန်ဖွင့်လျှင် Key ပြန်ထည့်ရန် မလိုအပ်တော့ပါ။",
+                        text = "သင့်ဖုန်းအတွက် လိုင်စင်အတည်ပြုပြီးပါပြီ။ နောက်တစ်ကြိမ် ပြန်ဖွင့်လျှင် ကုဒ်ပြန်ထည့်ရန် မလိုအပ်တော့ပါ။",
                         color = LuckyTextSecondary,
                         fontSize = 14.sp,
+                        lineHeight = 1.5.em,
                         textAlign = TextAlign.Center
                     )
                 },

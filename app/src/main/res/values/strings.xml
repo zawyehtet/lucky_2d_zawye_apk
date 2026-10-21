@@ -50,11 +50,13 @@
     <string name="quick_bet_mode_2_guide">a=အပါ, b=ဘရိတ်, t=ထိပ်, w=နောက်, p=ပါဝါ, n=နက္ခတ်, s=အပူး, x=ညီကို, k=ခွေ</string>
     <string name="keypad_enter">ENTER</string>
     <string name="action_paste">PASTE</string>
-    <string name="layoff_confirm_title">တင်ကွက်များ တင်ရန် သေချာပါသလား ?</string>
-    <string name="layoff_confirm_message">ဘရိတ် (%1$s) ထက် ကျော်လွန်နေသော တင်ကွက်များကို စာရင်းသွင်းမည်။</string>
-    <string name="layoff_confirm_summary">တင်ရန် စုစုပေါင်း: %1$s (%2$d လုံး)</string>
-    <string name="action_layoff_cancel">မတင်ပါ</string>
-    <string name="action_layoff_confirm">တင်မည်</string>
+    <string name="layoff_confirm_title">ဒိုင်သို့ တင်ကွက် ရွေးချယ်ပါ</string>
+    <string name="layoff_confirm_message">ဘရိတ် (%1$s) ထက် ကျော်လွန်နေသော တင်ကွက်များကို ဒိုင်သို့ တင်မည်။</string>
+    <string name="layoff_confirm_summary">တင်ရန် စုစုပေါင်း: %1$s (%2$d ကွက်)</string>
+    <string name="action_layoff_all">အားလုံးတင်မည်</string>
+    <string name="action_layoff_30">အကွက် ၃၀ တင်မည်</string>
+    <string name="action_layoff_cancel">မလုပ်တော့ပါ</string>
+    <string name="action_layoff_confirm">အားလုံးတင်မည်</string>
     <string name="setting_sound_title">အသံ (Sound)</string>
     <string name="setting_sound_enabled_subtitle">အသံဖွင့်ထားသည်</string>
     <string name="setting_sound_disabled_subtitle">အသံပိတ်ထားသည်</string>
