@@ -3,6 +3,7 @@ package com.example.data
 import java.util.concurrent.atomic.AtomicLong
 
 private val betItemIdCounter = AtomicLong(1000L)
+private val sessionIdCounter = AtomicLong(1L)
 
 data class Agent(
     val id: Int,
@@ -14,7 +15,8 @@ data class Agent(
 data class Session(
     val name: String,
     val rate: Double = 0.0,
-    val mult: Double = 0.0
+    val mult: Double = 0.0,
+    val id: Long = sessionIdCounter.incrementAndGet()
 )
 
 data class BetItem(

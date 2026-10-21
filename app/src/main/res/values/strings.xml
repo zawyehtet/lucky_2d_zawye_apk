@@ -2,6 +2,13 @@
     <string name="app_name">Lucky2D</string>
     <string name="manage_round_times_title">အကြိမ်ရေ</string>
     <string name="no_rounds_yet">အကြိမ် မရှိသေးပါ</string>
+    <string name="sessions_empty_text">အကြိမ်ရေ မရှိသေးပါ</string>
+    <string name="session_col_serial">စဉ်</string>
+    <string name="session_col_name">အကြိမ်အမည်</string>
+    <string name="session_col_commission">ကော်မရှင် %</string>
+    <string name="session_col_mult">အဆ</string>
+    <string name="session_edit_dialog_title">အကြိမ်ရေ ပြင်ဆင်ရန်</string>
+    <string name="session_delete_confirm_message">ဤအကြိမ်ရေအား ဖျက်မည်လား?</string>
     <string name="add_round_first">အကြိမ်ရေ အရင်ထည့်ပါ</string>
     <string name="round_label">အကြိမ်</string>
     <string name="select_round_prompt">အကြိမ် ရွေးပါ</string>

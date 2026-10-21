@@ -565,11 +565,29 @@ class ExampleRobolectricTest {
         liveRoundInput = existingRound.name
         assertTrue(MainViewModel.shouldShowRoundSaveButton(liveRoundInput))
 
-        // 6. Saving edited round updates it and clears input so Save button hides again
-        assertTrue(viewModel.updateSession(existingRound.name, Session("ညနေပိုင်း", 12.0, 80.0)))
+        // 6. Saving edited round updates it in place (preserving its ID without duplicates) and updates selectedSession
+        assertTrue(viewModel.updateSessionById(existingRound.id, Session("ညနေပိုင်း", 12.0, 85.0, existingRound.id)))
         liveRoundInput = ""
         assertFalse(MainViewModel.shouldShowRoundSaveButton(liveRoundInput))
+        assertEquals(1, viewModel.sessions.value.size)
+        assertEquals(existingRound.id, viewModel.sessions.value.single().id)
         assertEquals("ညနေပိုင်း", viewModel.sessions.value.single().name)
+        assertEquals(12.0, viewModel.sessions.value.single().rate, 0.001)
+        assertEquals(85.0, viewModel.sessions.value.single().mult, 0.001)
+        assertEquals("ညနေပိုင်း", viewModel.selectedSession.value)
+
+        // 7. Verify Session table headers, empty state, and delete confirmation strings
+        assertEquals("အကြိမ်ရေ မရှိသေးပါ", context.getString(R.string.sessions_empty_text))
+        assertEquals("စဉ်", context.getString(R.string.session_col_serial))
+        assertEquals("အကြိမ်အမည်", context.getString(R.string.session_col_name))
+        assertEquals("ကော်မရှင် %", context.getString(R.string.session_col_commission))
+        assertEquals("အဆ", context.getString(R.string.session_col_mult))
+        assertEquals("ဤအကြိမ်ရေအား ဖျက်မည်လား?", context.getString(R.string.session_delete_confirm_message))
+
+        // 8. Deleting session by ID removes it from storage and clears selectedSession immediately
+        assertTrue(viewModel.deleteSessionById(existingRound.id))
+        assertTrue(viewModel.sessions.value.isEmpty())
+        assertEquals("", viewModel.selectedSession.value)
     }
 
     @Test

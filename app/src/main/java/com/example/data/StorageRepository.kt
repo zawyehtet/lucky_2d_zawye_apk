@@ -54,12 +54,22 @@ class StorageRepository(context: Context) {
                 val list = mutableListOf<Session>()
                 for (i in 0 until arr.length()) {
                     val obj = arr.getJSONObject(i)
+                    val savedId = obj.optLong("id", 0L)
                     list.add(
-                        Session(
-                            name = obj.getString("name"),
-                            rate = obj.optDouble("rate", 0.0),
-                            mult = obj.optDouble("mult", 0.0)
-                        )
+                        if (savedId > 0L) {
+                            Session(
+                                name = obj.getString("name"),
+                                rate = obj.optDouble("rate", 0.0),
+                                mult = obj.optDouble("mult", 0.0),
+                                id = savedId
+                            )
+                        } else {
+                            Session(
+                                name = obj.getString("name"),
+                                rate = obj.optDouble("rate", 0.0),
+                                mult = obj.optDouble("mult", 0.0)
+                            )
+                        }
                     )
                 }
 
@@ -83,6 +93,7 @@ class StorageRepository(context: Context) {
             val arr = JSONArray()
             sessions.forEach { s ->
                 val obj = JSONObject().apply {
+                    put("id", s.id)
                     put("name", s.name)
                     put("rate", s.rate)
                     put("mult", s.mult)
@@ -96,6 +107,24 @@ class StorageRepository(context: Context) {
         } catch (e: Exception) {
             Log.e("StorageRepository", "Error saving sessions", e)
         }
+    }
+
+    fun updateSessionById(sessionId: Long, updatedSession: Session): List<Session>? {
+        val current = loadSessions()
+        if (current.none { it.id == sessionId }) return null
+        val updated = current.map { s ->
+            if (s.id == sessionId) updatedSession.copy(id = sessionId) else s
+        }
+        saveSessions(updated)
+        return updated
+    }
+
+    fun deleteSessionById(sessionId: Long): List<Session>? {
+        val current = loadSessions()
+        if (current.none { it.id == sessionId }) return null
+        val updated = current.filter { it.id != sessionId }
+        saveSessions(updated)
+        return updated
     }
 
     // Agents

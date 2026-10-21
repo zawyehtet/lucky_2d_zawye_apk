@@ -1790,7 +1790,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
+    fun updateSessionById(sessionId: Long, updatedSession: Session): Boolean {
+        val existing = _sessions.value.firstOrNull { it.id == sessionId } ?: return false
+        val trimmedName = updatedSession.name.trim()
+        if (trimmedName.isEmpty()) return false
+        if (_sessions.value.any { it.id != sessionId && it.name.equals(trimmedName, ignoreCase = true) }) {
+            showToast("အကြိမ် အမည် ထပ်နေပါသည်")
+            return false
+        }
+        val normalized = updatedSession.copy(id = sessionId, name = trimmedName)
+        val updated = _sessions.value.map { if (it.id == sessionId) normalized else it }
+        _sessions.value = updated
+        repository.updateSessionById(sessionId, normalized) ?: repository.saveSessions(updated)
+        if (_selectedSession.value == existing.name) {
+            _selectedSession.value = normalized.name
+        }
+        soundManager.playEdit()
+        showToast("အကြိမ် ပြင်ဆင်ပြီးပါပြီ")
+        return true
+    }
+
     fun updateSession(oldName: String, updatedSession: Session): Boolean {
+        val existing = _sessions.value.firstOrNull { it.name == oldName }
+        if (existing != null) {
+            return updateSessionById(existing.id, updatedSession)
+        }
         val trimmedName = updatedSession.name.trim()
         if (trimmedName.isEmpty()) return false
         if (!oldName.equals(trimmedName, ignoreCase = true) &&
@@ -1811,18 +1835,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
-    fun deleteSession(name: String) {
-        if (_sessions.value.none { it.name == name }) return
-        val updated = _sessions.value.filter { it.name != name }
+    fun deleteSessionById(sessionId: Long): Boolean {
+        val target = _sessions.value.firstOrNull { it.id == sessionId } ?: return false
+        val updated = _sessions.value.filter { it.id != sessionId }
         _sessions.value = updated
-        repository.saveSessions(updated)
+        repository.deleteSessionById(sessionId) ?: repository.saveSessions(updated)
         if (updated.isEmpty()) {
             _selectedSession.value = ""
-        } else if (_selectedSession.value == name) {
+        } else if (_selectedSession.value == target.name) {
             _selectedSession.value = updated.first().name
         }
         soundManager.playDelete()
         showToast("အကြိမ် ဖျက်ပြီးပါပြီ")
+        return true
+    }
+
+    fun deleteSession(name: String) {
+        val target = _sessions.value.firstOrNull { it.name == name } ?: return
+        deleteSessionById(target.id)
     }
 
     // Settings
