@@ -45,7 +45,11 @@ fun AgentsScreen(
     val vouchers by viewModel.vouchers.collectAsState()
     val wins by viewModel.wins.collectAsState()
 
-    val hasRound = sessions.isNotEmpty() && selectedSession.isNotBlank() && sessions.any { it.name == selectedSession }
+    val settled by viewModel.settled.collectAsState()
+    val availableRounds = remember(sessions, selectedDate, vouchers, wins, settled) {
+        viewModel.getAvailableRoundsForDate(selectedDate)
+    }
+    val hasRound = selectedSession.isNotBlank() && (sessions.any { it.name == selectedSession } || availableRounds.contains(selectedSession))
     val noRoundsText = stringResource(R.string.no_rounds_yet)
 
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -71,7 +75,10 @@ fun AgentsScreen(
                 selectedSession = selectedSession,
                 sessions = sessions,
                 onSessionSelected = { viewModel.setSession(it) },
-                onBack = { viewModel.goBack() }
+                onBack = { viewModel.goBack() },
+                selectedDate = selectedDate,
+                onDateSelected = { viewModel.setDate(it) },
+                historicalRounds = availableRounds
             )
 
             Column(
@@ -87,11 +94,9 @@ fun AgentsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "နေ့စွဲ : $selectedDate",
-                        color = LuckyTextSecondary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
+                    InteractiveDateChip(
+                        selectedDate = selectedDate,
+                        onDateSelected = { viewModel.setDate(it) }
                     )
                     Text(
                         text = "${stringResource(R.string.round_label)} : ${if (hasRound) selectedSession else noRoundsText}",

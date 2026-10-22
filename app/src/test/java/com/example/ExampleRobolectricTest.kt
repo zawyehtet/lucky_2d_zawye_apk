@@ -703,5 +703,66 @@ class ExampleRobolectricTest {
         assertTrue(StorageRepository(app).loadVouchers().none { it.id == voucherToDelete.id })
         assertEquals(0L, viewModel.getAggregatedNumbers().sumOf { it.totalBet })
     }
+
+    @Test
+    fun `historical date and round composite filter preserves and retrieves past draws without data loss`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val viewModel = MainViewModel(app)
+        viewModel.resetAllData()
+
+        viewModel.addSession("22.AM", 10.0, 80.0)
+        viewModel.addSession("11", 10.0, 80.0)
+        viewModel.addAgent("ကိုအောင်", 10.0, 80.0)
+        val agent = viewModel.agents.value.first()
+
+        // 1. Select historical date "2026-10-22" and round "22.AM"
+        viewModel.setDate("2026-10-22")
+        viewModel.setRound("22.AM")
+        assertEquals("2026-10-22", viewModel.selectedDate.value)
+        assertEquals("22.AM", viewModel.selectedRound.value)
+        assertTrue(viewModel.hasActiveRound)
+
+        viewModel.setEntryAgent(agent)
+        viewModel.addEntryItems(listOf(BetItem("25", 5000L), BetItem("88", 3000L)))
+        assertTrue(viewModel.commitCurrentVoucher())
+        viewModel.setWinningNumber("25")
+        viewModel.lockAndSaveBrakeSettlement()
+
+        // 2. Switch to next day "2026-10-23" and round "11" -> clean slate for new draw
+        viewModel.setDate("2026-10-23")
+        viewModel.setRound("11")
+        assertEquals(0L, viewModel.getAggregatedNumbers().sumOf { it.totalBet })
+        assertEquals("", viewModel.getWinningNumberForCurrentSession())
+
+        viewModel.setEntryAgent(agent)
+        viewModel.addEntryItems(listOf(BetItem("99", 2000L)))
+        assertTrue(viewModel.commitCurrentVoucher())
+        viewModel.setWinningNumber("99")
+
+        // 3. Also test custom round "1st-Draw" on "2026-10-22"
+        viewModel.setDate("2026-10-22")
+        viewModel.setRound("1st-Draw")
+        assertTrue(viewModel.hasActiveRound)
+        viewModel.setEntryAgent(agent)
+        viewModel.addEntryItems(listOf(BetItem("14", 1500L)))
+        assertTrue(viewModel.commitCurrentVoucher())
+
+        // 4. Delete session "1st-Draw" or verify historical rounds for "2026-10-22" include both "22.AM" and "1st-Draw"
+        val historicalOnOct22 = viewModel.getHistoricalRoundsForDate("2026-10-22")
+        assertTrue(historicalOnOct22.contains("22.AM"))
+        assertTrue(historicalOnOct22.contains("1st-Draw"))
+
+        // 5. Switch back to "2026-10-22" and "22.AM" -> immediately retrieves all saved vouchers, numbers, winning number, and settlement
+        viewModel.setDate("2026-10-22")
+        viewModel.setRound("22.AM")
+        assertEquals(8000L, viewModel.getAggregatedNumbers().sumOf { it.totalBet })
+        assertEquals("25", viewModel.getWinningNumberForCurrentSession())
+        assertEquals(5000L, viewModel.getWinningNumberBetAmountForCurrentSession())
+
+        val roomRepo = StorageRepository(app)
+        assertEquals(1, roomRepo.loadVouchersForDateAndRound("2026-10-22", "22.AM").size)
+        assertEquals("25", roomRepo.loadWinningNumberForDateAndRound("2026-10-22", "22.AM")?.n)
+        assertEquals("22.AM", roomRepo.loadSettlementForDateAndRound("2026-10-22", "22.AM")?.session)
+    }
 }
 

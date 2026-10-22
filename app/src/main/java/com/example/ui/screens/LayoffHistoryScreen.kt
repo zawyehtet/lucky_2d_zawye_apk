@@ -42,7 +42,13 @@ fun LayoffHistoryScreen(
     val selectedSession by viewModel.selectedSession.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
 
-    val hasRound = sessions.isNotEmpty() && selectedSession.isNotBlank() && sessions.any { it.name == selectedSession }
+    val vouchers by viewModel.vouchers.collectAsState()
+    val wins by viewModel.wins.collectAsState()
+    val settled by viewModel.settled.collectAsState()
+    val availableRounds = remember(sessions, selectedDate, vouchers, wins, settled) {
+        viewModel.getAvailableRoundsForDate(selectedDate)
+    }
+    val hasRound = selectedSession.isNotBlank() && (sessions.any { it.name == selectedSession } || availableRounds.contains(selectedSession))
 
     var selectedDetailRecord by remember { mutableStateOf<LayoffRecord?>(null) }
     var batchToDelete by remember { mutableStateOf<LayoffRecord?>(null) }
@@ -74,6 +80,9 @@ fun LayoffHistoryScreen(
             sessions = sessions,
             onSessionSelected = { viewModel.setSession(it) },
             onBack = { viewModel.goBack() },
+            selectedDate = selectedDate,
+            onDateSelected = { viewModel.setDate(it) },
+            historicalRounds = availableRounds,
             actions = {
                 Button(
                     onClick = { viewModel.exportCurrentSessionLedgerToFile(context, launchShare = true) },
@@ -126,10 +135,9 @@ fun LayoffHistoryScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text(
-                            text = "နေ့စွဲ : $selectedDate",
-                            color = LuckyTextSecondary,
-                            fontSize = 13.sp
+                        InteractiveDateChip(
+                            selectedDate = selectedDate,
+                            onDateSelected = { viewModel.setDate(it) }
                         )
                         Text(
                             text = "အကြိမ် : ${if (selectedSession.isEmpty()) "အကြိမ် မရှိသေးပါ" else selectedSession}",

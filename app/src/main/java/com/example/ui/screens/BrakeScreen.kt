@@ -57,7 +57,10 @@ fun BrakeScreen(
     val settledRecords by viewModel.settled.collectAsState()
     val agents by viewModel.agents.collectAsState()
 
-    val hasRound = sessions.isNotEmpty() && selectedSession.isNotBlank() && sessions.any { it.name == selectedSession }
+    val availableRounds = remember(sessions, selectedDate, vouchers, wins, settledRecords) {
+        viewModel.getAvailableRoundsForDate(selectedDate)
+    }
+    val hasRound = selectedSession.isNotBlank() && (sessions.any { it.name == selectedSession } || availableRounds.contains(selectedSession))
     val noRoundsText = stringResource(R.string.no_rounds_yet)
 
     val currentWinNum = remember(wins, selectedDate, selectedSession, hasRound) {
@@ -142,6 +145,9 @@ fun BrakeScreen(
                 sessions = sessions,
                 onSessionSelected = { viewModel.setSession(it) },
                 onBack = { viewModel.goBack() },
+                selectedDate = selectedDate,
+                onDateSelected = { viewModel.setDate(it) },
+                historicalRounds = availableRounds,
                 actions = {
                     Button(
                         onClick = { viewModel.exportCurrentSessionLedgerToFile(context, launchShare = true) },
@@ -185,11 +191,9 @@ fun BrakeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text(
-                            text = "နေ့စွဲ : $selectedDate",
-                            color = LuckyTextPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
+                        com.example.ui.components.InteractiveDateChip(
+                            selectedDate = selectedDate,
+                            onDateSelected = { viewModel.setDate(it) }
                         )
                         Text(
                             text = "ဘရိတ် : ${fmt(activeBrake)}",

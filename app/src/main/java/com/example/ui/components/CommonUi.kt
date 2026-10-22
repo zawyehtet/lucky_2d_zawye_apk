@@ -19,12 +19,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -374,6 +380,171 @@ fun EntryLongPressDropdownMenu(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AppDatePickerModal(
+    currentDate: String,
+    onDateSelected: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val initialMillis = remember(currentDate) {
+        try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }
+            sdf.parse(currentDate)?.time ?: System.currentTimeMillis()
+        } catch (_: Exception) {
+            System.currentTimeMillis()
+        }
+    }
+    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val millis = datePickerState.selectedDateMillis
+                    if (millis != null) {
+                        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                            timeZone = TimeZone.getTimeZone("UTC")
+                        }
+                        onDateSelected(sdf.format(Date(millis)))
+                    }
+                    onDismiss()
+                },
+                modifier = Modifier.testTag("date_picker_confirm_btn")
+            ) {
+                Text(
+                    text = "ရွေးမည်",
+                    color = LuckyHeader,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.testTag("date_picker_dismiss_btn")
+            ) {
+                Text(
+                    text = stringResource(R.string.action_cancel),
+                    color = LuckyTextSecondary
+                )
+            }
+        }
+    ) {
+        DatePicker(state = datePickerState)
+    }
+}
+
+@Composable
+fun CustomRoundInputDialog(
+    initialRound: String = "",
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var roundInput by rememberSaveable { mutableStateOf(initialRound) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LuckyCard,
+        title = {
+            Text(
+                text = "အကြိမ် ရွေးရန် / ရိုက်ထည့်ရန်",
+                color = LuckyTextPrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "အကြိမ်အမည် ရိုက်ထည့်ပါ (ဥပမာ - 22.AM, 11, 1st-Draw)",
+                    color = LuckyTextSecondary,
+                    fontSize = 13.sp
+                )
+                AppOutlinedTextField(
+                    value = roundInput,
+                    onValueChange = { roundInput = it },
+                    label = { Text("အကြိမ်အမည်") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("custom_round_dialog_input")
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val clean = roundInput.trim()
+                    if (clean.isNotEmpty()) {
+                        onConfirm(clean)
+                    }
+                    onDismiss()
+                },
+                enabled = roundInput.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = LuckyHeader,
+                    contentColor = Color.White
+                ),
+                modifier = Modifier.testTag("custom_round_dialog_confirm_btn")
+            ) {
+                Text("ရွေးမည်", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_cancel), color = LuckyTextSecondary)
+            }
+        }
+    )
+}
+
+@Composable
+fun InteractiveDateChip(
+    selectedDate: String,
+    onDateSelected: (String) -> Unit,
+    prefix: String = "နေ့စွဲ : ",
+    labelText: String? = null,
+    textColor: Color = LuckyTextSecondary,
+    modifier: Modifier = Modifier
+) {
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
+
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(6.dp))
+            .clickable { showDatePicker = true }
+            .padding(vertical = 2.dp, horizontal = 4.dp)
+            .testTag("interactive_date_chip"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.CalendarMonth,
+            contentDescription = "ရက်စွဲ ရွေးရန်",
+            tint = LuckyHeader,
+            modifier = Modifier.size(16.dp)
+        )
+        Text(
+            text = labelText ?: "$prefix$selectedDate",
+            color = textColor,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+
+    if (showDatePicker) {
+        AppDatePickerModal(
+            currentDate = selectedDate,
+            onDateSelected = onDateSelected,
+            onDismiss = { showDatePicker = false }
+        )
+    }
+}
+
 @Composable
 fun AppHeader(
     title: String = "Lucky2D",
@@ -382,9 +553,14 @@ fun AppHeader(
     onSessionSelected: (String) -> Unit,
     onBack: (() -> Unit)? = null,
     showSessionPill: Boolean = true,
+    selectedDate: String? = null,
+    onDateSelected: ((String) -> Unit)? = null,
+    historicalRounds: List<String> = emptyList(),
     actions: (@Composable RowScope.() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    var showHeaderDatePicker by rememberSaveable { mutableStateOf(false) }
+
     Surface(
         color = LuckyHeader,
         shadowElevation = 2.dp,
@@ -435,15 +611,52 @@ fun AppHeader(
                 if (actions != null) {
                     actions()
                 }
+                if (selectedDate != null && onDateSelected != null) {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.White.copy(alpha = 0.18f))
+                            .border(1.dp, Color.White.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
+                            .clickable { showHeaderDatePicker = true }
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                            .testTag("header_date_picker_btn"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CalendarMonth,
+                            contentDescription = "ရက်စွဲ ရွေးရန်",
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = selectedDate,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
                 if (showSessionPill) {
                     SessionPill(
                         selectedSession = selectedSession,
                         sessions = sessions,
+                        historicalRounds = historicalRounds,
                         onSessionSelected = onSessionSelected
                     )
                 }
             }
         }
+    }
+
+    if (showHeaderDatePicker && selectedDate != null && onDateSelected != null) {
+        AppDatePickerModal(
+            currentDate = selectedDate,
+            onDateSelected = onDateSelected,
+            onDismiss = { showHeaderDatePicker = false }
+        )
     }
 }
 
@@ -452,10 +665,19 @@ fun SessionPill(
     selectedSession: String,
     sessions: List<Session>,
     onSessionSelected: (String) -> Unit,
+    historicalRounds: List<String> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
+    var showCustomDialog by rememberSaveable { mutableStateOf(false) }
     val noRoundsText = stringResource(R.string.no_rounds_yet)
+
+    val combinedRounds = remember(sessions, historicalRounds, selectedSession) {
+        val configured = sessions.map { it.name.trim() }.filter { it.isNotEmpty() }
+        val hist = historicalRounds.map { it.trim() }.filter { it.isNotEmpty() }
+        val active = if (selectedSession.isNotBlank()) listOf(selectedSession.trim()) else emptyList()
+        (configured + hist + active).distinct()
+    }
 
     Box(modifier = modifier) {
         Row(
@@ -464,12 +686,13 @@ fun SessionPill(
                 .background(Color.White.copy(alpha = 0.2f))
                 .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
                 .clickable { expanded = true }
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .testTag("header_session_pill"),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                text = if (sessions.isEmpty() || selectedSession.isEmpty()) noRoundsText else selectedSession,
+                text = if (combinedRounds.isEmpty() || selectedSession.isEmpty()) noRoundsText else selectedSession,
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,
@@ -489,7 +712,7 @@ fun SessionPill(
             onDismissRequest = { expanded = false },
             modifier = Modifier.background(LuckyCard)
         ) {
-            if (sessions.isEmpty()) {
+            if (combinedRounds.isEmpty()) {
                 DropdownMenuItem(
                     text = {
                         Text(
@@ -501,23 +724,62 @@ fun SessionPill(
                     onClick = { expanded = false }
                 )
             } else {
-                sessions.forEach { s ->
+                val configuredNames = sessions.map { it.name }.toSet()
+                combinedRounds.forEach { roundName ->
+                    val isHistoricalOnly = roundName !in configuredNames
                     DropdownMenuItem(
                         text = {
                             Text(
-                                text = s.name,
-                                color = if (s.name == selectedSession) LuckyHeader else LuckyTextPrimary,
-                                fontWeight = if (s.name == selectedSession) FontWeight.Bold else FontWeight.Normal
+                                text = if (isHistoricalOnly) "$roundName (မှတ်တမ်း)" else roundName,
+                                color = if (roundName == selectedSession) LuckyHeader else LuckyTextPrimary,
+                                fontWeight = if (roundName == selectedSession) FontWeight.Bold else FontWeight.Normal
                             )
                         },
                         onClick = {
-                            onSessionSelected(s.name)
+                            onSessionSelected(roundName)
                             expanded = false
                         }
                     )
                 }
             }
+            HorizontalDivider(color = LuckyBorder)
+            DropdownMenuItem(
+                text = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null,
+                            tint = LuckyHeader,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "အကြိမ် ရိုက်ထည့်ရန်...",
+                            color = LuckyHeader,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                    }
+                },
+                onClick = {
+                    expanded = false
+                    showCustomDialog = true
+                },
+                modifier = Modifier.testTag("custom_round_menu_item")
+            )
         }
+    }
+
+    if (showCustomDialog) {
+        CustomRoundInputDialog(
+            initialRound = selectedSession,
+            onConfirm = { newRound ->
+                onSessionSelected(newRound)
+            },
+            onDismiss = { showCustomDialog = false }
+        )
     }
 }
 

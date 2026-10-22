@@ -9,6 +9,11 @@ import org.json.JSONObject
 class StorageRepository(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("lucky2d_storage", Context.MODE_PRIVATE)
+    val database: AppDatabase = AppDatabase.getInstance(context)
+    val voucherDao: VoucherDao = database.voucherDao()
+    val winningNumberDao: WinningNumberDao = database.winningNumberDao()
+    val settlementDao: SettlementDao = database.settlementDao()
+    val sessionDao: SessionDao = database.sessionDao()
 
     companion object {
         private const val KEY_AGENTS = "lucky2d_agents"
@@ -47,8 +52,12 @@ class StorageRepository(context: Context) {
             if (jsonStr.isNullOrEmpty()) {
                 if (!migrated) {
                     prefs.edit().putBoolean(KEY_SESSIONS_MIGRATED_V1, true).apply()
+                    sessionDao.clearAllSessionsSync()
+                    emptyList()
+                } else {
+                    val roomSessions = sessionDao.getAllSessionsSync().map { it.toDomainSession() }
+                    roomSessions
                 }
-                emptyList()
             } else {
                 val arr = JSONArray(jsonStr)
                 val list = mutableListOf<Session>()
@@ -80,6 +89,8 @@ class StorageRepository(context: Context) {
                         return emptyList()
                     }
                 }
+                sessionDao.clearAllSessionsSync()
+                sessionDao.insertAllSessionsSync(list.map { SessionEntity.fromDomainSession(it) })
                 list
             }
         } catch (e: Exception) {
@@ -104,6 +115,8 @@ class StorageRepository(context: Context) {
                 .putString(KEY_SESSIONS, arr.toString())
                 .putBoolean(KEY_SESSIONS_MIGRATED_V1, true)
                 .apply()
+            sessionDao.clearAllSessionsSync()
+            sessionDao.insertAllSessionsSync(sessions.map { SessionEntity.fromDomainSession(it) })
         } catch (e: Exception) {
             Log.e("StorageRepository", "Error saving sessions", e)
         }
@@ -187,7 +200,7 @@ class StorageRepository(context: Context) {
         return try {
             val jsonStr = prefs.getString(KEY_VOUCHERS, null)
             if (jsonStr.isNullOrEmpty()) {
-                emptyList()
+                voucherDao.getAllVouchersSync().map { it.toDomainVoucher() }
             } else {
                 val arr = JSONArray(jsonStr)
                 val list = mutableListOf<Voucher>()
@@ -229,6 +242,8 @@ class StorageRepository(context: Context) {
                         )
                     )
                 }
+                voucherDao.clearAllVouchersSync()
+                voucherDao.insertAllVouchersSync(list.map { VoucherEntity.fromDomainVoucher(it) })
                 list
             }
         } catch (e: Exception) {
@@ -263,6 +278,8 @@ class StorageRepository(context: Context) {
                 arr.put(obj)
             }
             prefs.edit().putString(KEY_VOUCHERS, arr.toString()).apply()
+            voucherDao.clearAllVouchersSync()
+            voucherDao.insertAllVouchersSync(vouchers.map { VoucherEntity.fromDomainVoucher(it) })
         } catch (e: Exception) {
             Log.e("StorageRepository", "Error saving vouchers", e)
         }
@@ -275,6 +292,7 @@ class StorageRepository(context: Context) {
         val current = loadVouchers()
         if (current.none { it.id == voucherId }) return null
         val updated = current.filter { it.id != voucherId }
+        voucherDao.deleteVoucherByIdSync(voucherId)
         saveVouchers(updated)
         return updated
     }
@@ -449,7 +467,7 @@ class StorageRepository(context: Context) {
         return try {
             val jsonStr = prefs.getString(KEY_WINS, null)
             if (jsonStr.isNullOrEmpty()) {
-                emptyList()
+                winningNumberDao.getAllWinningNumbersSync().map { it.toDomainWinRecord() }
             } else {
                 val arr = JSONArray(jsonStr)
                 val list = mutableListOf<WinRecord>()
@@ -463,6 +481,10 @@ class StorageRepository(context: Context) {
                         )
                     )
                 }
+                winningNumberDao.clearAllWinningNumbersSync()
+                winningNumberDao.insertAllWinningNumbersSync(
+                    list.map { WinningNumberEntity.fromDomainWinRecord(it) }
+                )
                 list
             }
         } catch (e: Exception) {
@@ -483,6 +505,10 @@ class StorageRepository(context: Context) {
                 arr.put(obj)
             }
             prefs.edit().putString(KEY_WINS, arr.toString()).apply()
+            winningNumberDao.clearAllWinningNumbersSync()
+            winningNumberDao.insertAllWinningNumbersSync(
+                wins.map { WinningNumberEntity.fromDomainWinRecord(it) }
+            )
         } catch (e: Exception) {
             Log.e("StorageRepository", "Error saving wins", e)
         }
@@ -493,7 +519,7 @@ class StorageRepository(context: Context) {
         return try {
             val jsonStr = prefs.getString(KEY_SETTLED, null)
             if (jsonStr.isNullOrEmpty()) {
-                emptyList()
+                settlementDao.getAllSettlementsSync().map { it.toDomainSettledRecord() }
             } else {
                 val arr = JSONArray(jsonStr)
                 val list = mutableListOf<SettledRecord>()
@@ -514,6 +540,10 @@ class StorageRepository(context: Context) {
                         )
                     )
                 }
+                settlementDao.clearAllSettlementsSync()
+                settlementDao.insertAllSettlementsSync(
+                    list.map { SettlementEntity.fromDomainSettledRecord(it) }
+                )
                 list
             }
         } catch (e: Exception) {
@@ -541,6 +571,10 @@ class StorageRepository(context: Context) {
                 arr.put(obj)
             }
             prefs.edit().putString(KEY_SETTLED, arr.toString()).apply()
+            settlementDao.clearAllSettlementsSync()
+            settlementDao.insertAllSettlementsSync(
+                records.map { SettlementEntity.fromDomainSettledRecord(it) }
+            )
         } catch (e: Exception) {
             Log.e("StorageRepository", "Error saving settled records", e)
         }
@@ -554,6 +588,7 @@ class StorageRepository(context: Context) {
         val current = loadSettled()
         if (current.none { it.id == recordId }) return null
         val updated = current.filter { it.id != recordId }
+        settlementDao.deleteSettlementByIdSync(recordId)
         saveSettled(updated)
         return updated
     }
@@ -576,6 +611,35 @@ class StorageRepository(context: Context) {
 
     fun updateById(recordId: Long, updatedRecord: SettledRecord): List<SettledRecord>? =
         updateSettledRecordById(recordId, updatedRecord)
+
+    // Composite (date, roundNumber) reactive and synchronous Room DAO queries
+    fun getVouchersByDateAndRound(date: String, round: String): kotlinx.coroutines.flow.Flow<List<VoucherEntity>> =
+        voucherDao.getVouchersByDateAndRound(date, round)
+
+    fun getRoundsByDate(date: String): kotlinx.coroutines.flow.Flow<List<String>> =
+        voucherDao.getRoundsByDate(date)
+
+    fun getWinningNumber(date: String, round: String): kotlinx.coroutines.flow.Flow<WinningNumberEntity?> =
+        winningNumberDao.getWinningNumber(date, round)
+
+    fun getSettlement(date: String, round: String): kotlinx.coroutines.flow.Flow<SettlementEntity?> =
+        settlementDao.getSettlement(date, round)
+
+    fun getDistinctHistoricalRoundsByDateSync(date: String): List<String> {
+        return try {
+            val voucherRounds = voucherDao.getRoundsByDateSync(date)
+            val winRounds = winningNumberDao.getRoundsByDateSync(date)
+            val settlementRounds = settlementDao.getRoundsByDateSync(date)
+            val layoffRounds = loadLayoffs().filter { it.date == date }.map { it.session }
+            (voucherRounds + winRounds + settlementRounds + layoffRounds)
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .distinct()
+        } catch (e: Exception) {
+            Log.e("StorageRepository", "Error loading historical rounds for date $date", e)
+            emptyList()
+        }
+    }
 
     // App Settings
     fun loadSettings(): AppSettings {
@@ -624,6 +688,30 @@ class StorageRepository(context: Context) {
         }
     }
 
+    fun loadVouchersForDateAndRound(date: String, round: String): List<Voucher> {
+        return try {
+            voucherDao.getVouchersByDateAndRoundSync(date, round).map { it.toDomainVoucher() }
+        } catch (e: Exception) {
+            loadVouchers().filter { it.date == date && it.session == round }
+        }
+    }
+
+    fun loadWinningNumberForDateAndRound(date: String, round: String): WinRecord? {
+        return try {
+            winningNumberDao.getWinningNumberSync(date, round)?.toDomainWinRecord()
+        } catch (e: Exception) {
+            loadWins().firstOrNull { it.date == date && it.session == round }
+        }
+    }
+
+    fun loadSettlementForDateAndRound(date: String, round: String): SettledRecord? {
+        return try {
+            settlementDao.getSettlementSync(date, round)?.toDomainSettledRecord()
+        } catch (e: Exception) {
+            loadSettled().firstOrNull { it.date == date && it.session == round }
+        }
+    }
+
     fun resetAllData() {
         try {
             prefs.edit()
@@ -631,6 +719,10 @@ class StorageRepository(context: Context) {
                 .putBoolean(KEY_SESSIONS_MIGRATED_V1, true)
                 .putBoolean(KEY_SETTINGS_MIGRATED_V1, true)
                 .apply()
+            voucherDao.clearAllVouchersSync()
+            winningNumberDao.clearAllWinningNumbersSync()
+            settlementDao.clearAllSettlementsSync()
+            sessionDao.clearAllSessionsSync()
         } catch (e: Exception) {
             Log.e("StorageRepository", "Error resetting data", e)
         }

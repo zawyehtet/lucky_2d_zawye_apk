@@ -66,7 +66,11 @@ fun NumbersScreen(
     val wins by viewModel.wins.collectAsState()
     val agents by viewModel.agents.collectAsState()
 
-    val hasRound = sessions.isNotEmpty() && selectedSession.isNotBlank() && sessions.any { it.name == selectedSession }
+    val settled by viewModel.settled.collectAsState()
+    val availableRounds = remember(sessions, selectedDate, vouchers, wins, settled) {
+        viewModel.getAvailableRoundsForDate(selectedDate)
+    }
+    val hasRound = selectedSession.isNotBlank() && (sessions.any { it.name == selectedSession } || availableRounds.contains(selectedSession))
     val noRoundsText = stringResource(R.string.no_rounds_yet)
 
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -113,7 +117,10 @@ fun NumbersScreen(
             selectedSession = selectedSession,
             sessions = sessions,
             onSessionSelected = { viewModel.setSession(it) },
-            onBack = { viewModel.goBack() }
+            onBack = { viewModel.goBack() },
+            selectedDate = selectedDate,
+            onDateSelected = { viewModel.setDate(it) },
+            historicalRounds = availableRounds
         )
 
         Column(
@@ -130,11 +137,10 @@ fun NumbersScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "နေ့စွဲ : $selectedDate (${if (hasRound) selectedSession else noRoundsText})",
-                    color = LuckyTextSecondary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
+                com.example.ui.components.InteractiveDateChip(
+                    selectedDate = selectedDate,
+                    onDateSelected = { viewModel.setDate(it) },
+                    labelText = "နေ့စွဲ : $selectedDate (${if (hasRound) selectedSession else noRoundsText})"
                 )
                 Text(
                     text = "စုစုပေါင်း ဂဏန်း : ${filteredSummaries.size} လုံး",

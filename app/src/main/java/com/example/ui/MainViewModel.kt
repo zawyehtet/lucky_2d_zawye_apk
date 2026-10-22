@@ -5,12 +5,18 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.*
 import com.example.util.SoundManager
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -134,6 +140,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _selectedSession = MutableStateFlow("")
     val selectedSession: StateFlow<String> = _selectedSession.asStateFlow()
+    val selectedRound: StateFlow<String> = _selectedSession.asStateFlow()
+
+    private val customRoundsByDate = mutableMapOf<String, MutableSet<String>>()
+    private val _availableRoundsForSelectedDate = MutableStateFlow<List<String>>(emptyList())
+    val availableRoundsForSelectedDate: StateFlow<List<String>> = _availableRoundsForSelectedDate.asStateFlow()
+
+    val currentDrawFilter: Flow<Pair<String, String>> = combine(_selectedDate, _selectedSession) { date, round ->
+        Pair(date, round)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val activeVouchers: StateFlow<List<VoucherEntity>> = currentDrawFilter
+        .flatMapLatest { (date, round) ->
+            repository.getVouchersByDateAndRound(date, round)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val activeWinningNumber: StateFlow<WinningNumberEntity?> = currentDrawFilter
+        .flatMapLatest { (date, round) ->
+            repository.getWinningNumber(date, round)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val activeSettlement: StateFlow<SettlementEntity?> = currentDrawFilter
+        .flatMapLatest { (date, round) ->
+            repository.getSettlement(date, round)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val historicalRoundsForSelectedDate: StateFlow<List<String>> = _selectedDate
+        .flatMapLatest { date ->
+            repository.getRoundsByDate(date)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _currentScreen = MutableStateFlow(Screen.HOME)
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
@@ -195,10 +234,50 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _toastEvent = MutableSharedFlow<String>()
     val toastEvent: SharedFlow<String> = _toastEvent.asSharedFlow()
 
+    fun getHistoricalRoundsForDate(date: String = _selectedDate.value): List<String> {
+        val voucherRounds = _vouchers.value.filter { it.date == date }.map { it.session }
+        val winRounds = _wins.value.filter { it.date == date }.map { it.session }
+        val layoffRounds = _layoffs.value.filter { it.date == date }.map { it.session }
+        val settledRounds = _settled.value.filter { it.date == date }.map { it.session }
+        val dbRounds = repository.getDistinctHistoricalRoundsByDateSync(date)
+        return (voucherRounds + winRounds + layoffRounds + settledRounds + dbRounds)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+    }
+
+    fun getAvailableRoundsForDate(date: String = _selectedDate.value): List<String> {
+        val configured = _sessions.value.map { it.name.trim() }.filter { it.isNotEmpty() }
+        val historical = getHistoricalRoundsForDate(date)
+        val custom = customRoundsByDate[date]?.toList().orEmpty()
+        return (configured + historical + custom).distinct()
+    }
+
+    private fun refreshAvailableRounds() {
+        _availableRoundsForSelectedDate.value = getAvailableRoundsForDate(_selectedDate.value)
+    }
+
+    fun hasHistoricalOrCustomRound(date: String = _selectedDate.value, round: String = _selectedSession.value): Boolean {
+        val cleanRound = round.trim()
+        if (cleanRound.isEmpty()) return false
+        return customRoundsByDate[date]?.contains(cleanRound) == true ||
+            getHistoricalRoundsForDate(date).contains(cleanRound)
+    }
+
     val hasActiveRound: Boolean
-        get() = _sessions.value.isNotEmpty() &&
-            _selectedSession.value.isNotBlank() &&
-            _sessions.value.any { it.name == _selectedSession.value }
+        get() = _selectedSession.value.isNotBlank() && (
+            _sessions.value.any { it.name == _selectedSession.value } ||
+                hasHistoricalOrCustomRound(_selectedDate.value, _selectedSession.value)
+            )
+
+    fun formatDisplayDate(dateStr: String = _selectedDate.value): String {
+        return try {
+            val parsed = dateFormatter.parse(dateStr)
+            if (parsed != null) displayDateFormatter.format(parsed) else dateStr
+        } catch (_: Exception) {
+            dateStr
+        }
+    }
 
     val isResultInputEnabled: Boolean
         get() = hasActiveRound
@@ -225,15 +304,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         deletedSettledIds.clear()
         deletedRoundKeys.clear()
         manuallyEditedRecordIds.clear()
+        customRoundsByDate.clear()
         val loadedSessions = repository.loadSessions()
         _sessions.value = loadedSessions
-        if (loadedSessions.isNotEmpty()) {
-            if (_selectedSession.value.isEmpty() || !loadedSessions.any { it.name == _selectedSession.value }) {
-                _selectedSession.value = loadedSessions.first().name
-            }
-        } else {
-            _selectedSession.value = ""
-        }
 
         _agents.value = repository.loadAgents()
         _vouchers.value = repository.loadVouchers()
@@ -241,6 +314,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _blocked.value = repository.loadBlocked()
         _wins.value = repository.loadWins()
         _settled.value = repository.loadSettled()
+
+        val histRoundsForDate = getHistoricalRoundsForDate(_selectedDate.value)
+        if (loadedSessions.isNotEmpty()) {
+            if (_selectedSession.value.isEmpty() ||
+                (!loadedSessions.any { it.name == _selectedSession.value } && _selectedSession.value !in histRoundsForDate)
+            ) {
+                _selectedSession.value = loadedSessions.first().name
+            }
+        } else if (histRoundsForDate.isNotEmpty()) {
+            if (_selectedSession.value !in histRoundsForDate) {
+                _selectedSession.value = histRoundsForDate.first()
+            }
+        } else {
+            _selectedSession.value = ""
+        }
+        refreshAvailableRounds()
+
         val s = repository.loadSettings()
         _settings.value = s
         soundManager.isSoundEnabled = s.soundEnabled
@@ -271,13 +361,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setSession(session: String) {
-        if (session.isBlank() || _sessions.value.any { it.name == session }) {
-            _selectedSession.value = session
+        val trimmed = session.trim()
+        if (trimmed.isEmpty()) {
+            _selectedSession.value = ""
+        } else {
+            customRoundsByDate.getOrPut(_selectedDate.value) { mutableSetOf() }.add(trimmed)
+            _selectedSession.value = trimmed
         }
+        refreshAvailableRounds()
     }
 
+    fun setRound(round: String) = setSession(round)
+
     fun setDate(date: String) {
-        _selectedDate.value = date
+        val cleanDate = date.trim()
+        if (cleanDate.isEmpty()) return
+        _selectedDate.value = cleanDate
+        val histRounds = getHistoricalRoundsForDate(cleanDate)
+        val configuredNames = _sessions.value.map { it.name }
+        val currentSess = _selectedSession.value
+        if (currentSess.isBlank()) {
+            val nextRound = histRounds.firstOrNull() ?: configuredNames.firstOrNull() ?: ""
+            _selectedSession.value = nextRound
+        } else if (histRounds.isNotEmpty() && currentSess !in histRounds) {
+            _selectedSession.value = histRounds.first()
+        }
+        refreshAvailableRounds()
     }
 
     fun navigateTo(screen: Screen) {
@@ -315,8 +424,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         winningNumber: String = getWinningNumberForCurrentSession(),
         session: String = _selectedSession.value
     ) {
-        if (session.isNotBlank() && _sessions.value.any { it.name == session }) {
-            _selectedSession.value = session
+        if (session.isNotBlank()) {
+            setSession(session)
         }
         val cleanWin = winningNumber.trim()
         if (cleanWin.isNotEmpty()) {
@@ -530,6 +639,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val updated = listOf(newVoucher) + _vouchers.value
         _vouchers.value = updated
         repository.saveVouchers(updated)
+        refreshAvailableRounds()
 
         _entryItems.value = emptyList()
         soundManager.playSave()
@@ -552,6 +662,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val updated = _vouchers.value.filter { it.id != voucherId }
         _vouchers.value = updated
         repository.deleteVoucherById(voucherId) ?: repository.saveVouchers(updated)
+        refreshAvailableRounds()
         soundManager.playDelete()
         showToast("ဘောင်ချာ ဖျက်ပြီးပါပြီ")
         return true
@@ -872,6 +983,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val updated = listOf(record) + _layoffs.value
         _layoffs.value = updated
         repository.saveLayoffs(updated)
+        refreshAvailableRounds()
         soundManager.playSave()
         showToast("တင်ကွက် (${layoffItems.size} ခု ၊ $totalLayoff) တင်ပြီးပါပြီ")
     }
@@ -1007,6 +1119,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _wins.value = updated
         _activeWinningNumberFor2DSummary.value = clean
         repository.saveWins(updated)
+        refreshAvailableRounds()
         soundManager.playSave()
         showToast("ထွက်ဂဏန်း ($clean) သိမ်းဆည်းပြီးပါပြီ")
     }
@@ -1785,6 +1898,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_selectedSession.value.isEmpty() || !_sessions.value.any { it.name == _selectedSession.value }) {
             _selectedSession.value = trimmed
         }
+        refreshAvailableRounds()
         soundManager.playSave()
         showToast("အကြိမ် အသစ် ထည့်ပြီးပါပြီ")
         return true
@@ -1805,6 +1919,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_selectedSession.value == existing.name) {
             _selectedSession.value = normalized.name
         }
+        refreshAvailableRounds()
         soundManager.playEdit()
         showToast("အကြိမ် ပြင်ဆင်ပြီးပါပြီ")
         return true
@@ -1830,6 +1945,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_selectedSession.value == oldName) {
             _selectedSession.value = normalized.name
         }
+        refreshAvailableRounds()
         soundManager.playEdit()
         showToast("အကြိမ် ပြင်ဆင်ပြီးပါပြီ")
         return true
@@ -1839,12 +1955,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val target = _sessions.value.firstOrNull { it.id == sessionId } ?: return false
         val updated = _sessions.value.filter { it.id != sessionId }
         _sessions.value = updated
+        customRoundsByDate.values.forEach { it.remove(target.name) }
         repository.deleteSessionById(sessionId) ?: repository.saveSessions(updated)
         if (updated.isEmpty()) {
             _selectedSession.value = ""
         } else if (_selectedSession.value == target.name) {
             _selectedSession.value = updated.first().name
         }
+        refreshAvailableRounds()
         soundManager.playDelete()
         showToast("အကြိမ် ဖျက်ပြီးပါပြီ")
         return true
@@ -1883,6 +2001,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         showToast("အချက်အလက်အားလုံး ပြန်လည်ရှင်းထုတ်ပြီးပါပြီ")
     }
 }
+
+typealias SharedLotteryViewModel = MainViewModel
 
 data class SettledCalculation(
     val totalRetained: Long,

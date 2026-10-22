@@ -65,27 +65,35 @@ fun NumberEntryScreen(
     val selectedSession by viewModel.selectedSession.collectAsState()
     val sessions by viewModel.sessions.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
+    val vouchers by viewModel.vouchers.collectAsState()
+    val wins by viewModel.wins.collectAsState()
+    val settled by viewModel.settled.collectAsState()
     val currentAgent by viewModel.entryAgent.collectAsState()
     val agents by viewModel.agents.collectAsState()
     val entryItems by viewModel.entryItems.collectAsState()
     val blocked by viewModel.blocked.collectAsState()
     val invalidAmountText = stringResource(R.string.error_invalid_bet_amount)
 
-    val hasRound = sessions.isNotEmpty() && selectedSession.isNotBlank() && sessions.any { it.name == selectedSession }
+    val availableRounds = remember(sessions, selectedDate, vouchers, wins, settled) {
+        viewModel.getAvailableRoundsForDate(selectedDate)
+    }
+    val hasRound = selectedSession.isNotBlank() && (sessions.any { it.name == selectedSession } || availableRounds.contains(selectedSession))
     val isCommissionSet = currentAgent != null
     val canTriggerEntryMenu = hasRound && isCommissionSet
     val noRoundsText = stringResource(R.string.no_rounds_yet)
 
     val listState = rememberLazyListState()
 
-    // Keypad state — no preselected pattern or default values
+    // Three-stage sequential focus flow:
+    // Stage 1: "NUMBER" (ဂဏန်း) -> Stage 2: "PATTERN" (အမျိုးအစား, defaults to "ဒဲ့") -> Stage 3: "AMOUNT" (ပမာဏ)
     var inputNumber by rememberSaveable { mutableStateOf("") }
-    var inputPattern by rememberSaveable { mutableStateOf("") }
+    var inputPattern by rememberSaveable { mutableStateOf("ဒဲ့") }
     var inputAmount by rememberSaveable { mutableStateOf("") }
     var isReverseOn by rememberSaveable { mutableStateOf(false) }
-    var activeField by rememberSaveable { mutableStateOf("NUMBER") } // "NUMBER" or "AMOUNT"
+    var activeField by rememberSaveable { mutableStateOf("NUMBER") } // "NUMBER", "PATTERN", or "AMOUNT"
     var shouldOverwriteAmount by rememberSaveable { mutableStateOf(false) }
     var amountValidationError by rememberSaveable { mutableStateOf(false) }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
 
     // Debounced validation (180ms) on typed bet amount
     LaunchedEffect(inputAmount) {
@@ -125,30 +133,107 @@ fun NumberEntryScreen(
 
     val totalAmount = entryItems.sumOf { it.a }
 
+    fun advanceToAmount() {
+        activeField = "AMOUNT"
+        shouldOverwriteAmount = inputAmount.isNotEmpty()
+    }
+
     fun onKeypadNumPress(num: String) {
         if (!hasRound) {
             viewModel.showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
             return
         }
-        if (activeField == "NUMBER") {
-            if (inputPattern == "ခွေ") {
-                if (inputNumber.length < 9) {
-                    inputNumber += num
-                }
-            } else if (inputPattern in listOf("ထိပ်", "နောက်", "အပါ", "ဘရိတ်")) {
-                inputNumber = num.take(1)
-            } else {
-                if (inputNumber.length < 2) {
-                    inputNumber += num
+        when (activeField) {
+            "NUMBER" -> {
+                if (inputPattern == "ခွေ") {
+                    if (inputNumber.length < 9) {
+                        inputNumber = (inputNumber + num).take(9)
+                    }
+                } else if (inputPattern in listOf("ထိပ်", "နောက်", "အပါ", "ဘရိတ်")) {
+                    inputNumber = num.take(1)
+                    if (inputNumber.length == 1) {
+                        activeField = "PATTERN"
+                        shouldOverwriteAmount = false
+                    }
+                } else {
+                    if (inputNumber.length < 2) {
+                        inputNumber = (inputNumber + num).take(2)
+                        if (inputNumber.length == 2) {
+                            activeField = "PATTERN"
+                            shouldOverwriteAmount = false
+                        }
+                    }
                 }
             }
+            "PATTERN" -> {
+                if (inputPattern in listOf("ထိပ်", "နောက်", "အပါ", "ဘရိတ်") && inputNumber.isEmpty()) {
+                    inputNumber = num.take(1)
+                    advanceToAmount()
+                } else if (inputPattern == "ခွေ" && inputNumber.length < 2) {
+                    inputNumber = (inputNumber + num).take(9)
+                    activeField = "NUMBER"
+                } else {
+                    if (inputPattern.isEmpty()) {
+                        inputPattern = "ဒဲ့"
+                    }
+                    val digitsOnly = num.filter { it.isDigit() }
+                    inputAmount = digitsOnly
+                    activeField = "AMOUNT"
+                    shouldOverwriteAmount = false
+                }
+            }
+            else -> {
+                val digitsOnly = num.filter { it.isDigit() }
+                if (shouldOverwriteAmount) {
+                    inputAmount = digitsOnly
+                    shouldOverwriteAmount = false
+                } else {
+                    inputAmount += digitsOnly
+                }
+            }
+        }
+    }
+
+    fun onPatternSelected(pattern: String) {
+        if (!hasRound) {
+            viewModel.showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
+            return
+        }
+        viewModel.onInputFocusOrTap()
+        inputPattern = pattern
+        if (pattern in listOf("ထိပ်", "နောက်", "အပါ", "ဘရိတ်") && inputNumber.length > 1) {
+            inputNumber = inputNumber.take(1)
+        }
+        if (activeField == "PATTERN") {
+            advanceToAmount()
+        } else if (pattern in listOf("ပါဝါ", "ညီအစ်ကို", "အပူး", "စုံစုံ", "မမ", "စုံမ", "မစုံ", "နက္ခတ်")) {
+            advanceToAmount()
+        } else if (pattern in listOf("ထိပ်", "နောက်", "အပါ", "ဘရိတ်") && inputNumber.length == 1) {
+            advanceToAmount()
+        } else if (pattern == "ဒဲ့" && inputNumber.length == 2) {
+            advanceToAmount()
         } else {
-            val digitsOnly = num.filter { it.isDigit() }
-            if (shouldOverwriteAmount) {
-                inputAmount = digitsOnly
+            activeField = "NUMBER"
+            shouldOverwriteAmount = false
+        }
+    }
+
+    fun onAdvanceFocusPress() {
+        viewModel.onInputFocusOrTap()
+        when (activeField) {
+            "NUMBER" -> {
+                activeField = "PATTERN"
                 shouldOverwriteAmount = false
-            } else {
-                inputAmount += digitsOnly
+            }
+            "PATTERN" -> {
+                if (inputPattern.isEmpty()) {
+                    inputPattern = "ဒဲ့"
+                }
+                advanceToAmount()
+            }
+            else -> {
+                activeField = "NUMBER"
+                shouldOverwriteAmount = false
             }
         }
     }
@@ -179,16 +264,19 @@ fun NumberEntryScreen(
             val distinctDigits = inputNumber.filter { it.isDigit() }.toSet()
             if (distinctDigits.size < 2) {
                 viewModel.showToast("ခွေရန် အနည်းဆုံး ဂဏန်း ၂ လုံး ရိုက်ပါ")
+                activeField = "NUMBER"
                 return
             }
         } else if (effectivePattern in listOf("ထိပ်", "နောက်", "အပါ", "ဘရိတ်")) {
             if (inputNumber.isEmpty()) {
                 viewModel.showToast("ဂဏန်း ၁ လုံး ရိုက်ထည့်ပါ")
+                activeField = "NUMBER"
                 return
             }
         } else if (effectivePattern == "ဒဲ့") {
             if (inputNumber.length != 2) {
                 viewModel.showToast("၂ လုံးဂဏန်း အပြည့်ရိုက်ပါ")
+                activeField = "NUMBER"
                 return
             }
         }
@@ -223,11 +311,19 @@ fun NumberEntryScreen(
         if (betList.isNotEmpty()) {
             viewModel.addEntryItems(betList)
             inputNumber = ""
-            inputPattern = ""
+            inputPattern = "ဒဲ့"
             isReverseOn = false
             activeField = "NUMBER"
             shouldOverwriteAmount = false
         }
+    }
+
+    if (showDatePicker) {
+        com.example.ui.components.AppDatePickerModal(
+            currentDate = selectedDate,
+            onDateSelected = { viewModel.setDate(it) },
+            onDismiss = { showDatePicker = false }
+        )
     }
 
     Box(modifier = modifier.fillMaxSize().background(LuckyBg)) {
@@ -250,7 +346,9 @@ fun NumberEntryScreen(
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { showDatePicker = true }
                     ) {
                         CloverLogo(size = 26.dp)
                         Text(
@@ -554,18 +652,21 @@ fun NumberEntryScreen(
                         modifier = Modifier.weight(1f).testTag("preview_cell_number")
                     )
 
+                    val effectivePatternDisplay = inputPattern.ifEmpty { "ဒဲ့" }
                     val patternDisplay = when {
-                        inputPattern.isNotEmpty() && isReverseOn -> "$inputPattern (အာ)"
-                        inputPattern.isNotEmpty() -> inputPattern
-                        isReverseOn -> "အာ"
-                        else -> ""
+                        isReverseOn -> "$effectivePatternDisplay (အာ)"
+                        else -> effectivePatternDisplay
                     }
                     PreviewCell(
                         title = "အမျိုးအစား",
                         value = patternDisplay,
-                        isActive = false,
-                        onClick = {},
-                        modifier = Modifier.weight(1f)
+                        isActive = activeField == "PATTERN",
+                        onClick = {
+                            viewModel.onInputFocusOrTap()
+                            activeField = "PATTERN"
+                            shouldOverwriteAmount = false
+                        },
+                        modifier = Modifier.weight(1f).testTag("preview_cell_pattern")
                     )
 
                     PreviewCell(
@@ -596,7 +697,7 @@ fun NumberEntryScreen(
                     )
                 }
 
-                // Horizontally Scrollable Pattern Row (starts with nothing selected)
+                // Horizontally Scrollable Pattern Row (defaults to "ဒဲ့")
                 val patterns = listOf("ပါဝါ", "ညီအစ်ကို", "ထိပ်", "နောက်", "အပူး", "စုံစုံ", "မမ", "စုံမ", "မစုံ", "ဘရိတ်")
                 Row(
                     modifier = Modifier
@@ -609,8 +710,7 @@ fun NumberEntryScreen(
                         text = "ဒဲ့",
                         isSelected = inputPattern == "ဒဲ့",
                         onClick = {
-                            inputPattern = if (inputPattern == "ဒဲ့") "" else "ဒဲ့"
-                            activeField = "NUMBER"
+                            onPatternSelected("ဒဲ့")
                         }
                     )
 
@@ -619,10 +719,7 @@ fun NumberEntryScreen(
                             text = p,
                             isSelected = inputPattern == p,
                             onClick = {
-                                inputPattern = if (inputPattern == p) "" else p
-                                if (p in listOf("ထိပ်", "နောက်", "အပါ", "ဘရိတ်")) {
-                                    activeField = "NUMBER"
-                                }
+                                onPatternSelected(p)
                             }
                         )
                     }
@@ -638,7 +735,7 @@ fun NumberEntryScreen(
                         bgColor = if (inputPattern == "နက္ခတ်") LuckySuccess else LuckyHeader,
                         textColor = Color.White,
                         modifier = Modifier.weight(1f),
-                        onClick = { inputPattern = if (inputPattern == "နက္ခတ်") "" else "နက္ခတ်" }
+                        onClick = { onPatternSelected("နက္ခတ်") }
                     )
                     NumKey("1", Modifier.weight(1f)) { onKeypadNumPress("1") }
                     NumKey("2", Modifier.weight(1f)) { onKeypadNumPress("2") }
@@ -647,8 +744,21 @@ fun NumberEntryScreen(
                         text = "R",
                         bgColor = if (isReverseOn) LuckySuccess else LuckyHeader,
                         textColor = Color.White,
-                        modifier = Modifier.weight(1f),
-                        onClick = { isReverseOn = !isReverseOn }
+                        modifier = Modifier.weight(1f).testTag("keypad_r_btn"),
+                        onClick = {
+                            if (!hasRound) {
+                                viewModel.showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
+                                return@KeypadBtn
+                            }
+                            viewModel.onInputFocusOrTap()
+                            isReverseOn = !isReverseOn
+                            if (inputPattern.isEmpty()) {
+                                inputPattern = "ဒဲ့"
+                            }
+                            if (activeField == "PATTERN") {
+                                advanceToAmount()
+                            }
+                        }
                     )
                 }
 
@@ -663,8 +773,7 @@ fun NumberEntryScreen(
                         textColor = Color.White,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            inputPattern = if (inputPattern == "ခွေ") "" else "ခွေ"
-                            activeField = "NUMBER"
+                            onPatternSelected("ခွေ")
                         }
                     )
                     NumKey("4", Modifier.weight(1f)) { onKeypadNumPress("4") }
@@ -676,14 +785,7 @@ fun NumberEntryScreen(
                         textColor = Color.White,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            viewModel.onInputFocusOrTap()
-                            if (activeField == "NUMBER") {
-                                activeField = "AMOUNT"
-                                shouldOverwriteAmount = inputAmount.isNotEmpty()
-                            } else {
-                                activeField = "NUMBER"
-                                shouldOverwriteAmount = false
-                            }
+                            onAdvanceFocusPress()
                         }
                     )
                 }
@@ -699,9 +801,7 @@ fun NumberEntryScreen(
                         textColor = Color.White,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            inputPattern = if (inputPattern == "အပါ") "" else "အပါ"
-                            activeField = "NUMBER"
-                            shouldOverwriteAmount = false
+                            onPatternSelected("အပါ")
                         }
                     )
                     NumKey("7", Modifier.weight(1f)) { onKeypadNumPress("7") }
@@ -714,14 +814,7 @@ fun NumberEntryScreen(
                         isBold = true,
                         modifier = Modifier.weight(1f).testTag("keypad_enter_btn"),
                         onClick = {
-                            viewModel.onInputFocusOrTap()
-                            if (activeField == "NUMBER") {
-                                activeField = "AMOUNT"
-                                shouldOverwriteAmount = inputAmount.isNotEmpty()
-                            } else {
-                                activeField = "NUMBER"
-                                shouldOverwriteAmount = false
-                            }
+                            onAdvanceFocusPress()
                         }
                     )
                 }
@@ -737,14 +830,21 @@ fun NumberEntryScreen(
                         textColor = Color.White,
                         modifier = Modifier.weight(1f).testTag("keypad_delete_btn"),
                         onClick = {
-                            if (activeField == "NUMBER") {
-                                if (inputNumber.isNotEmpty()) {
-                                    inputNumber = inputNumber.dropLast(1)
+                            when (activeField) {
+                                "NUMBER" -> {
+                                    if (inputNumber.isNotEmpty()) {
+                                        inputNumber = inputNumber.dropLast(1)
+                                    }
                                 }
-                            } else if (activeField == "AMOUNT") {
-                                shouldOverwriteAmount = false
-                                if (inputAmount.isNotEmpty()) {
-                                    inputAmount = inputAmount.dropLast(1)
+                                "PATTERN" -> {
+                                    isReverseOn = false
+                                    inputPattern = "ဒဲ့"
+                                }
+                                "AMOUNT" -> {
+                                    shouldOverwriteAmount = false
+                                    if (inputAmount.isNotEmpty()) {
+                                        inputAmount = inputAmount.dropLast(1)
+                                    }
                                 }
                             }
                         }
@@ -902,13 +1002,14 @@ fun PreviewCell(
         isActive -> LuckyHeader
         else -> LuckyBorder
     }
+    val bgColor = if (isActive) Color(0xFFF0F7FF) else Color.White
     Box(
         modifier = modifier
             .height(38.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(Color.White)
+            .background(bgColor)
             .border(
-                width = if (isActive || isError) 1.5.dp else 1.dp,
+                width = if (isActive || isError) 2.dp else 1.dp,
                 color = borderColor,
                 shape = RoundedCornerShape(8.dp)
             )

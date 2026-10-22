@@ -825,7 +825,11 @@ fun AgentSettlementScreen(viewModel: MainViewModel) {
     val wins by viewModel.wins.collectAsState()
     val activeWinFromFlowA by viewModel.activeWinningNumberFor2DSummary.collectAsState()
 
-    val hasRound = sessions.isNotEmpty() && selectedSession.isNotBlank() && sessions.any { it.name == selectedSession }
+    val settled by viewModel.settled.collectAsState()
+    val availableRounds = remember(sessions, selectedDate, vouchers, wins, settled) {
+        viewModel.getAvailableRoundsForDate(selectedDate)
+    }
+    val hasRound = selectedSession.isNotBlank() && (sessions.any { it.name == selectedSession } || availableRounds.contains(selectedSession))
     val noRoundsText = stringResource(R.string.no_rounds_yet)
 
     val currentWin = remember(wins, selectedDate, selectedSession, hasRound, activeWinFromFlowA) {
@@ -866,7 +870,10 @@ fun AgentSettlementScreen(viewModel: MainViewModel) {
             selectedSession = selectedSession,
             sessions = sessions,
             onSessionSelected = { viewModel.setSession(it) },
-            onBack = { viewModel.goBack() }
+            onBack = { viewModel.goBack() },
+            selectedDate = selectedDate,
+            onDateSelected = { viewModel.setDate(it) },
+            historicalRounds = availableRounds
         )
 
         LazyColumn(
