@@ -72,6 +72,7 @@ fun NumberEntryScreen(
     val agents by viewModel.agents.collectAsState()
     val entryItems by viewModel.entryItems.collectAsState()
     val blocked by viewModel.blocked.collectAsState()
+    val showConfirmBetDialog by viewModel.showConfirmBetDialog.collectAsState()
     val invalidAmountText = stringResource(R.string.error_invalid_bet_amount)
 
     val availableRounds = remember(sessions, selectedDate, vouchers, wins, settled) {
@@ -611,11 +612,11 @@ fun NumberEntryScreen(
                         .testTag("entry_total_label")
                 )
 
-                // Compact "ထိုးရန်" Button (Saves voucher and stays on NumberEntryScreen!)
+                // Compact "ထိုးရန်" / "ထိုးမည်" Button (Opens BetSubmissionConfirmDialog)
                 CompactFilledButton(
                     text = stringResource(R.string.action_place_bet),
                     onClick = {
-                        viewModel.commitCurrentVoucher()
+                        viewModel.requestBetSubmissionConfirmation()
                     },
                     enabled = hasRound && entryItems.isNotEmpty(),
                     containerColor = LuckySuccess,
@@ -984,7 +985,156 @@ fun NumberEntryScreen(
                 }
             )
         }
+
+        // Bet Submission Confirmation Dialog ("ထိုးမည် / မထိုးပါ" Box ပုံစံ)
+        if (showConfirmBetDialog) {
+            BetSubmissionConfirmDialog(
+                agentName = currentAgent?.name ?: "အထွေထွေ",
+                itemCount = entryItems.size,
+                totalAmount = totalAmount,
+                onDismiss = { viewModel.dismissConfirmBetDialog() },
+                onConfirm = { viewModel.confirmAndCommitVoucher() }
+            )
+        }
     }
+}
+
+@Composable
+fun BetSubmissionConfirmDialog(
+    agentName: String,
+    itemCount: Int,
+    totalAmount: Long,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    val cancelRedColor = Color(0xFFF44336)
+    val confirmGreenColor = Color(0xFF235347)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.testTag("bet_submission_confirm_dialog"),
+        title = {
+            Text(
+                text = "ဘောင်ချာ အတည်ပြုချက်",
+                color = LuckyHeader,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                lineHeight = 27.sp,
+                modifier = Modifier.testTag("bet_confirm_dialog_title")
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Surface(
+                    color = LuckyCardDark,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, LuckyBorder, RoundedCornerShape(10.dp))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "ထိုးသူ : $agentName",
+                            color = LuckyTextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            lineHeight = 23.sp,
+                            modifier = Modifier.testTag("bet_confirm_dialog_agent")
+                        )
+                        Text(
+                            text = "စုစုပေါင်း : $itemCount ကွက်",
+                            color = LuckyTextPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            lineHeight = 22.sp,
+                            modifier = Modifier.testTag("bet_confirm_dialog_count")
+                        )
+                        Text(
+                            text = "စုစုပေါင်း ကျသင့်ငွေ : ${fmt(totalAmount)} ကျပ်",
+                            color = LuckyHeader,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            lineHeight = 23.sp,
+                            modifier = Modifier.testTag("bet_confirm_dialog_total")
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                Text(
+                    text = "ဤစာရင်းအား ဘောင်ချာအဖြစ် အတည်ပြုထိုးမည် သေချာပါသလား?",
+                    color = LuckyTextSecondary,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp,
+                    lineHeight = 22.sp,
+                    modifier = Modifier.testTag("bet_confirm_dialog_prompt")
+                )
+            }
+        },
+        confirmButton = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = cancelRedColor,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .testTag("bet_confirm_dialog_cancel_btn")
+                ) {
+                    Text(
+                        text = "မထိုးပါ",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        lineHeight = 21.sp,
+                        maxLines = 1
+                    )
+                }
+
+                Button(
+                    onClick = onConfirm,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = confirmGreenColor,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .testTag("bet_confirm_dialog_confirm_btn")
+                ) {
+                    Text(
+                        text = "ထိုးမည်",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        lineHeight = 21.sp,
+                        maxLines = 1
+                    )
+                }
+            }
+        },
+        dismissButton = null
+    )
 }
 
 @Composable

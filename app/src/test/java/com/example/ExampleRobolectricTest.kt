@@ -764,5 +764,80 @@ class ExampleRobolectricTest {
         assertEquals("25", roomRepo.loadWinningNumberForDateAndRound("2026-10-22", "22.AM")?.n)
         assertEquals("22.AM", roomRepo.loadSettlementForDateAndRound("2026-10-22", "22.AM")?.session)
     }
+
+    @Test
+    fun `draw scoped agent session isolation and bet submission confirmation dialog work as specified`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val viewModel = MainViewModel(app)
+        viewModel.resetAllData()
+
+        viewModel.setDate("2026-10-22")
+        viewModel.addSession("22.AM", 10.0, 80.0)
+        viewModel.addSession("22.PM", 10.0, 80.0)
+
+        // 1. In "2026-10-22 - 22.AM", add Agent "ဦးမြ"
+        viewModel.setRound("22.AM")
+        viewModel.addAgent("ဦးမြ", 10.0, 80.0)
+        assertEquals(1, viewModel.agents.value.size)
+        val amAgent = viewModel.agents.value.first()
+        assertEquals("ဦးမြ", amAgent.name)
+        assertEquals("2026-10-22", amAgent.date)
+        assertEquals("22.AM", amAgent.roundNumber)
+
+        // 2. Switch to "2026-10-22 - 22.PM" -> must start with a clean, EMPTY initial state
+        viewModel.setRound("22.PM")
+        assertTrue(viewModel.agents.value.isEmpty())
+        assertTrue(viewModel.entryItems.value.isEmpty())
+
+        // Add Agent "ဦးမြ" (same name/id in 22.PM) and "ကိုကျော်" in "22.PM"
+        viewModel.addAgent("ဦးမြ", 12.0, 85.0)
+        viewModel.addAgent("ကိုကျော်", 10.0, 80.0)
+        assertEquals(2, viewModel.agents.value.size)
+
+        // 3. Switch back to "22.AM" and delete "ဦးမြ" -> must ONLY delete from "22.AM" and NEVER touch "22.PM"
+        viewModel.setRound("22.AM")
+        assertEquals(1, viewModel.agents.value.size)
+        viewModel.deleteAgent(amAgent.id)
+        assertTrue(viewModel.agents.value.isEmpty())
+
+        // Verify "22.PM" agents remain completely intact
+        viewModel.setRound("22.PM")
+        assertEquals(2, viewModel.agents.value.size)
+        assertTrue(viewModel.agents.value.any { it.name == "ဦးမြ" && it.rate == 12.0 })
+        assertTrue(viewModel.agents.value.any { it.name == "ကိုကျော်" })
+
+        // Verify selecting a brand new date shows empty initial state
+        viewModel.setDate("2026-10-25")
+        assertTrue(viewModel.agents.value.isEmpty())
+        assertTrue(viewModel.entryItems.value.isEmpty())
+
+        // 4. Test Bet Submission Confirmation Dialog ("ထိုးမည် / မထိုးပါ") workflow
+        viewModel.setDate("2026-10-22")
+        viewModel.setRound("22.PM")
+        val pmAgent = viewModel.agents.value.first()
+        viewModel.setEntryAgent(pmAgent)
+        viewModel.addEntryItems(listOf(BetItem("15", 2000L), BetItem("51", 1000L)))
+        assertEquals(2, viewModel.entryItems.value.size)
+        assertFalse(viewModel.showConfirmBetDialog.value)
+
+        // Tapping "ထိုးရန်" / "ထိုးမည်" opens confirmation dialog without saving voucher yet
+        assertTrue(viewModel.requestBetSubmissionConfirmation())
+        assertTrue(viewModel.showConfirmBetDialog.value)
+        assertEquals(0, viewModel.getFilteredVouchers().size)
+
+        // Tapping "မထိုးပါ" dismisses dialog and keeps draft items intact
+        viewModel.dismissConfirmBetDialog()
+        assertFalse(viewModel.showConfirmBetDialog.value)
+        assertEquals(2, viewModel.entryItems.value.size)
+        assertEquals(0, viewModel.getFilteredVouchers().size)
+
+        // Tapping "ထိုးရန်" again and confirming "ထိုးမည်" saves voucher to Room DB, clears draft table, and closes dialog
+        assertTrue(viewModel.requestBetSubmissionConfirmation())
+        assertTrue(viewModel.confirmAndCommitVoucher())
+        assertFalse(viewModel.showConfirmBetDialog.value)
+        assertTrue(viewModel.entryItems.value.isEmpty())
+        assertEquals(1, viewModel.getFilteredVouchers().size)
+        assertEquals(3000L, viewModel.getFilteredVouchers().first().items.sumOf { it.a })
+    }
 }
 

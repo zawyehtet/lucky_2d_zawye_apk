@@ -9,7 +9,9 @@ data class Agent(
     val id: Int,
     val name: String,
     val rate: Double = 0.0,
-    val mult: Double = 0.0
+    val mult: Double = 0.0,
+    val date: String = "",
+    val roundNumber: String = ""
 )
 
 data class Session(

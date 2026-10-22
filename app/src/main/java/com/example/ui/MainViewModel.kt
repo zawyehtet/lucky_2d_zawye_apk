@@ -151,6 +151,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
+    val activeAgents: StateFlow<List<AgentEntity>> = combine(_selectedDate, _selectedSession) { date, round ->
+        Pair(date, round)
+    }.flatMapLatest { (date, round) ->
+        repository.getAgentsByDateAndRound(date, round)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    @OptIn(ExperimentalCoroutinesApi::class)
     val activeVouchers: StateFlow<List<VoucherEntity>> = currentDrawFilter
         .flatMapLatest { (date, round) ->
             repository.getVouchersByDateAndRound(date, round)
@@ -211,6 +218,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _entryItems = MutableStateFlow<List<BetItem>>(emptyList())
     val entryItems: StateFlow<List<BetItem>> = _entryItems.asStateFlow()
+
+    val showConfirmBetDialog: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
     val entryTotalAmount: Long
         get() = _entryItems.value.sumOf { it.a }
@@ -298,6 +307,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         loadAllData()
     }
 
+    private fun refreshActiveAgentsForCurrentDraw(resetDraftOnSessionChange: Boolean = false) {
+        val currentSessionAgents = repository.loadAgentsForDateAndRound(_selectedDate.value, _selectedSession.value)
+        _agents.value = currentSessionAgents
+        if (resetDraftOnSessionChange) {
+            _entryItems.value = emptyList()
+            showConfirmBetDialog.value = false
+            val currentEntryAg = _entryAgent.value
+            if (currentEntryAg != null) {
+                _entryAgent.value = currentSessionAgents.firstOrNull {
+                    it.id == currentEntryAg.id && it.name == currentEntryAg.name
+                }
+            }
+        }
+    }
+
     fun loadAllData() {
         deletedVoucherIds.clear()
         deletedNumberIds.clear()
@@ -305,10 +329,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         deletedRoundKeys.clear()
         manuallyEditedRecordIds.clear()
         customRoundsByDate.clear()
+        showConfirmBetDialog.value = false
         val loadedSessions = repository.loadSessions()
         _sessions.value = loadedSessions
 
-        _agents.value = repository.loadAgents()
+        repository.loadAgents()
         _vouchers.value = repository.loadVouchers()
         _layoffs.value = repository.loadLayoffs()
         _blocked.value = repository.loadBlocked()
@@ -329,6 +354,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             _selectedSession.value = ""
         }
+        refreshActiveAgentsForCurrentDraw(resetDraftOnSessionChange = false)
         refreshAvailableRounds()
 
         val s = repository.loadSettings()
@@ -362,12 +388,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setSession(session: String) {
         val trimmed = session.trim()
+        val changed = _selectedSession.value != trimmed
         if (trimmed.isEmpty()) {
             _selectedSession.value = ""
         } else {
             customRoundsByDate.getOrPut(_selectedDate.value) { mutableSetOf() }.add(trimmed)
             _selectedSession.value = trimmed
         }
+        refreshActiveAgentsForCurrentDraw(resetDraftOnSessionChange = changed)
         refreshAvailableRounds()
     }
 
@@ -376,6 +404,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setDate(date: String) {
         val cleanDate = date.trim()
         if (cleanDate.isEmpty()) return
+        val changed = _selectedDate.value != cleanDate
         _selectedDate.value = cleanDate
         val histRounds = getHistoricalRoundsForDate(cleanDate)
         val configuredNames = _sessions.value.map { it.name }
@@ -386,6 +415,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else if (histRounds.isNotEmpty() && currentSess !in histRounds) {
             _selectedSession.value = histRounds.first()
         }
+        refreshActiveAgentsForCurrentDraw(resetDraftOnSessionChange = changed)
         refreshAvailableRounds()
     }
 
@@ -453,15 +483,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return false
     }
 
-    // Agent Management
+    // Agent Management (Strictly Scoped to selectedDate and selectedRound)
     fun addAgent(name: String, rate: Double, mult: Double) {
         val cleanName = name.trim()
         if (cleanName.isEmpty()) return
-        val nextId = (_agents.value.maxOfOrNull { it.id } ?: 0) + 1
-        val newAgent = Agent(id = nextId, name = cleanName, rate = rate, mult = mult)
-        val updated = _agents.value + newAgent
+        val date = _selectedDate.value
+        val round = _selectedSession.value
+        val sessionAgents = repository.loadAgentsForDateAndRound(date, round)
+        val nextId = (sessionAgents.maxOfOrNull { it.id } ?: 0) + 1
+        val newAgent = Agent(
+            id = nextId,
+            name = cleanName,
+            rate = rate,
+            mult = mult,
+            date = date,
+            roundNumber = round
+        )
+        val updated = repository.insertOrUpdateAgentForSession(date, round, newAgent)
         _agents.value = updated
-        repository.saveAgents(updated)
+        refreshAvailableRounds()
         soundManager.playSave()
         showToast("ကော်မရှင် အသစ် ထည့်သွင်းပြီးပါပြီ")
     }
@@ -469,30 +509,54 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateAgent(agent: Agent) {
         val cleanName = agent.name.trim()
         if (cleanName.isEmpty()) return
-        val normalized = agent.copy(name = cleanName)
-        val updated = _agents.value.map { if (it.id == normalized.id) normalized else it }
+        val date = _selectedDate.value
+        val round = _selectedSession.value
+        val normalized = agent.copy(
+            name = cleanName,
+            date = date,
+            roundNumber = round
+        )
+        val updated = repository.insertOrUpdateAgentForSession(date, round, normalized)
         _agents.value = updated
         if (_entryAgent.value?.id == normalized.id) {
             _entryAgent.value = normalized
         }
-        repository.saveAgents(updated)
         soundManager.playEdit()
         showToast("ပြင်ဆင်ပြီးပါပြီ")
     }
 
     fun deleteAgent(agentId: Int) {
+        val date = _selectedDate.value
+        val round = _selectedSession.value
         if (_agents.value.none { it.id == agentId }) return
-        val updated = _agents.value.filter { it.id != agentId }
+        val updated = repository.deleteAgentBySessionSync(date, round, agentId)
         _agents.value = updated
-        repository.saveAgents(updated)
+        if (_entryAgent.value?.id == agentId) {
+            _entryAgent.value = null
+        }
+        viewModelScope.launch {
+            repository.agentDao.deleteAgentBySession(date, round, agentId)
+        }
         soundManager.playDelete()
         showToast("ဖျက်ပြီးပါပြီ")
+    }
+
+    fun clearAgentsForCurrentSession() {
+        val date = _selectedDate.value
+        val round = _selectedSession.value
+        repository.clearAgentsForSessionSync(date, round)
+        _agents.value = emptyList()
+        _entryAgent.value = null
+        viewModelScope.launch {
+            repository.agentDao.clearAgentsForSession(date, round)
+        }
     }
 
     // Start Number Entry for an Agent
     fun startNumberEntry(agent: Agent) {
         _entryAgent.value = agent
         _entryItems.value = emptyList()
+        showConfirmBetDialog.value = false
         navigateTo(Screen.NUMBER_ENTRY)
     }
 
@@ -599,9 +663,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _entryItems.value = emptyList()
     }
 
+    fun requestBetSubmissionConfirmation(): Boolean {
+        if (!hasActiveRound) {
+            showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
+            return false
+        }
+        if (_entryAgent.value == null) {
+            showToast("ထိုးသူ ရွေးချယ်ပါ")
+            return false
+        }
+        if (_entryItems.value.isEmpty()) {
+            showToast("ထိုးမည့် ဂဏန်းများ ထည့်သွင်းပါ")
+            return false
+        }
+        if (_entryItems.value.any { !validateBetAmount(it.a).isValid }) {
+            showToast("ထိုးကြေး ပမာဏ လက်မခံပါ")
+            return false
+        }
+        showConfirmBetDialog.value = true
+        return true
+    }
+
+    fun dismissConfirmBetDialog() {
+        showConfirmBetDialog.value = false
+    }
+
+    fun confirmAndCommitVoucher(): Boolean {
+        showConfirmBetDialog.value = false
+        return commitCurrentVoucher()
+    }
+
     // Stay on Bet Input View after submitting voucher (do NOT redirect to Vouchers page)
     // Also require an active round before saving voucher
     fun commitCurrentVoucher(): Boolean {
+        showConfirmBetDialog.value = false
         if (!hasActiveRound) {
             showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
             return false
@@ -1204,20 +1299,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val totalRetained = retainedPerNum.values.sum()
 
         val sess = _sessions.value.firstOrNull { it.name == session }
+        val sessionAgents = if (date == _selectedDate.value && session == _selectedSession.value && _agents.value.isNotEmpty()) {
+            _agents.value
+        } else {
+            repository.loadAgentsForDateAndRound(date, session)
+        }
+        val fallbackAgents = if (sessionAgents.isEmpty()) repository.loadAgents() else emptyList()
+        val effectiveAgents = if (sessionAgents.isNotEmpty()) sessionAgents else fallbackAgents
+
         val defaultRate = sess?.rate ?: 0.0
         val defaultMult = if ((sess?.mult ?: 0.0) > 0.0) {
             sess!!.mult
         } else {
-            _agents.value.firstOrNull { it.mult > 0.0 }?.mult ?: 0.0
+            effectiveAgents.firstOrNull { it.mult > 0.0 }?.mult ?: 0.0
         }
 
-        val agentMap = _agents.value.associateBy { it.id }
+        val agentMap = effectiveAgents.associateBy { it.id }
+        val fallbackMap = fallbackAgents.associateBy { it.id }
         var totalCommission = 0.0
         var totalPayout = 0.0
 
         val vouchersByAgent = vouchers.groupBy { it.agentId }
         for ((agentId, agentVouchers) in vouchersByAgent) {
-            val ag = agentMap[agentId] ?: _agents.value.firstOrNull { it.name == agentVouchers.firstOrNull()?.agent }
+            val ag = agentMap[agentId]
+                ?: effectiveAgents.firstOrNull { it.name == agentVouchers.firstOrNull()?.agent }
+                ?: fallbackMap[agentId]
+                ?: fallbackAgents.firstOrNull { it.name == agentVouchers.firstOrNull()?.agent }
             val rate = if ((ag?.rate ?: 0.0) > 0.0) ag!!.rate else defaultRate
             val mult = if ((ag?.mult ?: 0.0) > 0.0) ag!!.mult else defaultMult
             var agentCommissionBase = 0.0
@@ -1892,11 +1999,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             showToast("အကြိမ် အမည် ထပ်နေပါသည်")
             return false
         }
+        val wasSessionBlank = _selectedSession.value.isEmpty()
         val updated = _sessions.value + Session(trimmed, rate, mult)
         _sessions.value = updated
         repository.saveSessions(updated)
         if (_selectedSession.value.isEmpty() || !_sessions.value.any { it.name == _selectedSession.value }) {
+            val activeDate = _selectedDate.value
+            if (wasSessionBlank) {
+                val unstagedAgents = repository.loadAgentsForDateAndRound(activeDate, "")
+                if (unstagedAgents.isNotEmpty()) {
+                    unstagedAgents.forEach { ag ->
+                        repository.insertOrUpdateAgentForSession(
+                            activeDate,
+                            trimmed,
+                            ag.copy(date = activeDate, roundNumber = trimmed)
+                        )
+                    }
+                    repository.clearAgentsForSessionSync(activeDate, "")
+                }
+            }
             _selectedSession.value = trimmed
+            refreshActiveAgentsForCurrentDraw(resetDraftOnSessionChange = false)
         }
         refreshAvailableRounds()
         soundManager.playSave()
@@ -1917,7 +2040,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _sessions.value = updated
         repository.updateSessionById(sessionId, normalized) ?: repository.saveSessions(updated)
         if (_selectedSession.value == existing.name) {
+            if (existing.name != normalized.name) {
+                val activeDate = _selectedDate.value
+                val currentSessionAgents = repository.loadAgentsForDateAndRound(activeDate, existing.name)
+                currentSessionAgents.forEach { ag ->
+                    repository.insertOrUpdateAgentForSession(
+                        activeDate,
+                        normalized.name,
+                        ag.copy(date = activeDate, roundNumber = normalized.name)
+                    )
+                }
+            }
             _selectedSession.value = normalized.name
+            refreshActiveAgentsForCurrentDraw(resetDraftOnSessionChange = false)
         }
         refreshAvailableRounds()
         soundManager.playEdit()
@@ -1944,6 +2079,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         repository.saveSessions(updated)
         if (_selectedSession.value == oldName) {
             _selectedSession.value = normalized.name
+            refreshActiveAgentsForCurrentDraw(resetDraftOnSessionChange = false)
         }
         refreshAvailableRounds()
         soundManager.playEdit()
@@ -1962,6 +2098,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else if (_selectedSession.value == target.name) {
             _selectedSession.value = updated.first().name
         }
+        refreshActiveAgentsForCurrentDraw(resetDraftOnSessionChange = true)
         refreshAvailableRounds()
         soundManager.playDelete()
         showToast("အကြိမ် ဖျက်ပြီးပါပြီ")
@@ -2003,6 +2140,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 }
 
 typealias SharedLotteryViewModel = MainViewModel
+typealias LotteryViewModel = MainViewModel
 
 data class SettledCalculation(
     val totalRetained: Long,

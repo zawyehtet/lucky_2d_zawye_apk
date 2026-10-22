@@ -292,17 +292,22 @@ interface SessionDao {
     fun clearAllSessionsSync()
 }
 
+typealias AgentEntity = com.example.data.local.entity.AgentEntity
+typealias AgentDao = com.example.data.local.dao.AgentDao
+
 @Database(
     entities = [
+        AgentEntity::class,
         VoucherEntity::class,
         WinningNumberEntity::class,
         SettlementEntity::class,
         SessionEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun agentDao(): AgentDao
     abstract fun voucherDao(): VoucherDao
     abstract fun winningNumberDao(): WinningNumberDao
     abstract fun settlementDao(): SettlementDao

@@ -10,6 +10,7 @@ class StorageRepository(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("lucky2d_storage", Context.MODE_PRIVATE)
     val database: AppDatabase = AppDatabase.getInstance(context)
+    val agentDao: AgentDao = database.agentDao()
     val voucherDao: VoucherDao = database.voucherDao()
     val winningNumberDao: WinningNumberDao = database.winningNumberDao()
     val settlementDao: SettlementDao = database.settlementDao()
@@ -140,12 +141,88 @@ class StorageRepository(context: Context) {
         return updated
     }
 
-    // Agents
+    // Agents (Draw-Scoped to [date, roundNumber, agentId])
+    fun getAgentsByDateAndRound(date: String, round: String): kotlinx.coroutines.flow.Flow<List<AgentEntity>> =
+        agentDao.getAgentsByDateAndRound(date, round)
+
+    fun loadAgentsForDateAndRound(date: String, round: String): List<Agent> {
+        return try {
+            agentDao.getAgentsByDateAndRoundSync(date, round).map { it.toDomainAgent() }
+        } catch (e: Exception) {
+            Log.e("StorageRepository", "Error loading agents for $date / $round", e)
+            emptyList()
+        }
+    }
+
+    fun insertOrUpdateAgentForSession(date: String, round: String, agent: Agent): List<Agent> {
+        return try {
+            val entity = AgentEntity.fromDomainAgent(agent, date = date, round = round)
+            agentDao.insertOrUpdateAgentSync(entity)
+            syncAllAgentsToPrefs()
+            loadAgentsForDateAndRound(date, round)
+        } catch (e: Exception) {
+            Log.e("StorageRepository", "Error inserting/updating agent", e)
+            emptyList()
+        }
+    }
+
+    suspend fun insertOrUpdateAgent(agent: AgentEntity) {
+        agentDao.insertOrUpdateAgent(agent)
+        syncAllAgentsToPrefs()
+    }
+
+    fun deleteAgentBySessionSync(date: String, round: String, agentId: Int): List<Agent> {
+        return try {
+            agentDao.deleteAgentBySessionSync(date, round, agentId)
+            syncAllAgentsToPrefs()
+            loadAgentsForDateAndRound(date, round)
+        } catch (e: Exception) {
+            Log.e("StorageRepository", "Error deleting agent by session", e)
+            emptyList()
+        }
+    }
+
+    suspend fun deleteAgentBySession(date: String, round: String, agentId: Int) {
+        agentDao.deleteAgentBySession(date, round, agentId)
+        syncAllAgentsToPrefs()
+    }
+
+    suspend fun clearAgentsForSession(date: String, round: String) {
+        agentDao.clearAgentsForSession(date, round)
+        syncAllAgentsToPrefs()
+    }
+
+    fun clearAgentsForSessionSync(date: String, round: String) {
+        agentDao.clearAgentsForSessionSync(date, round)
+        syncAllAgentsToPrefs()
+    }
+
+    private fun syncAllAgentsToPrefs() {
+        try {
+            val allEntities = agentDao.getAllAgentsSync()
+            val arr = JSONArray()
+            allEntities.forEach { entity ->
+                val obj = JSONObject().apply {
+                    put("id", entity.agentId)
+                    put("name", entity.name)
+                    put("rate", entity.commissionRate)
+                    put("mult", entity.multiplier)
+                    put("date", entity.date)
+                    put("roundNumber", entity.roundNumber)
+                }
+                arr.put(obj)
+            }
+            prefs.edit().putString(KEY_AGENTS, arr.toString()).apply()
+        } catch (e: Exception) {
+            Log.e("StorageRepository", "Error syncing agents to prefs", e)
+        }
+    }
+
     fun loadAgents(): List<Agent> {
         return try {
             val jsonStr = prefs.getString(KEY_AGENTS, null)
             if (jsonStr.isNullOrEmpty()) {
-                emptyList()
+                agentDao.getAllAgentsSync().map { it.toDomainAgent() }
             } else {
                 val arr = JSONArray(jsonStr)
                 val list = mutableListOf<Agent>()
@@ -156,7 +233,9 @@ class StorageRepository(context: Context) {
                             id = obj.getInt("id"),
                             name = obj.getString("name"),
                             rate = obj.optDouble("rate", 0.0),
-                            mult = obj.optDouble("mult", 0.0)
+                            mult = obj.optDouble("mult", 0.0),
+                            date = obj.optString("date", ""),
+                            roundNumber = obj.optString("roundNumber", "")
                         )
                     )
                 }
@@ -168,6 +247,8 @@ class StorageRepository(context: Context) {
                     saveAgents(emptyList())
                     emptyList()
                 } else {
+                    agentDao.clearAllAgentsSync()
+                    agentDao.insertAllAgentsSync(list.map { AgentEntity.fromDomainAgent(it) })
                     list
                 }
             }
@@ -186,10 +267,14 @@ class StorageRepository(context: Context) {
                     put("name", a.name)
                     put("rate", a.rate)
                     put("mult", a.mult)
+                    put("date", a.date)
+                    put("roundNumber", a.roundNumber)
                 }
                 arr.put(obj)
             }
             prefs.edit().putString(KEY_AGENTS, arr.toString()).apply()
+            agentDao.clearAllAgentsSync()
+            agentDao.insertAllAgentsSync(agents.map { AgentEntity.fromDomainAgent(it) })
         } catch (e: Exception) {
             Log.e("StorageRepository", "Error saving agents", e)
         }
@@ -627,11 +712,12 @@ class StorageRepository(context: Context) {
 
     fun getDistinctHistoricalRoundsByDateSync(date: String): List<String> {
         return try {
+            val agentRounds = agentDao.getRoundsByDateSync(date)
             val voucherRounds = voucherDao.getRoundsByDateSync(date)
             val winRounds = winningNumberDao.getRoundsByDateSync(date)
             val settlementRounds = settlementDao.getRoundsByDateSync(date)
             val layoffRounds = loadLayoffs().filter { it.date == date }.map { it.session }
-            (voucherRounds + winRounds + settlementRounds + layoffRounds)
+            (agentRounds + voucherRounds + winRounds + settlementRounds + layoffRounds)
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
                 .distinct()
@@ -719,6 +805,7 @@ class StorageRepository(context: Context) {
                 .putBoolean(KEY_SESSIONS_MIGRATED_V1, true)
                 .putBoolean(KEY_SETTINGS_MIGRATED_V1, true)
                 .apply()
+            agentDao.clearAllAgentsSync()
             voucherDao.clearAllVouchersSync()
             winningNumberDao.clearAllWinningNumbersSync()
             settlementDao.clearAllSettlementsSync()
