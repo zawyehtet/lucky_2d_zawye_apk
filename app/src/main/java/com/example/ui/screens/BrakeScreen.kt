@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
@@ -20,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -31,7 +33,6 @@ import com.example.R
 import com.example.ui.MainViewModel
 import com.example.ui.Screen
 import com.example.ui.components.AppHeader
-import com.example.ui.components.AppOutlinedTextField
 import com.example.ui.components.RoundRequiredHelperBanner
 import com.example.ui.components.fmt
 import com.example.ui.components.soundOnInputFocus
@@ -139,6 +140,7 @@ fun BrakeScreen(
 
     Box(modifier = modifier.fillMaxSize().background(LuckyBg)) {
         Column(modifier = Modifier.fillMaxSize()) {
+            // Clean Top Bar: App Logo / Title, Date & Draw Round Selector, and Export Button
             AppHeader(
                 title = "တင်ကွက်များ",
                 selectedSession = selectedSession,
@@ -176,100 +178,118 @@ fun BrakeScreen(
                 }
             )
 
-            // Header section: "ဘရိတ် : [Amount]", Date, "အပိုင်း : [Session]", and Post-Draw Winning Number box
+            // Sub-header: Helper banner + Sleek, Compact & Proportional Brake Input Strip
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 RoundRequiredHelperBanner(visible = !hasRound)
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column {
-                        com.example.ui.components.InteractiveDateChip(
-                            selectedDate = selectedDate,
-                            onDateSelected = { viewModel.setDate(it) }
-                        )
-                        Text(
-                            text = "ဘရိတ် : ${fmt(activeBrake)}",
-                            color = LuckyHeader,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "အပိုင်း : ${if (hasRound) selectedSession else noRoundsText}",
-                            color = LuckyTextPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
+                            text = "ဘရိတ် :",
+                            color = LuckyHeader,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = LuckySansFontFamily
                         )
 
-                        // Post-Draw State: prominent winning number box right next to "အပိုင်း : [Session]"
-                        if (hasValidWinNum) {
-                            Surface(
-                                color = Color(0xFFFFF59D),
+                        BasicTextField(
+                            value = currentBrakeInput,
+                            onValueChange = { viewModel.updateBrakeLimit(it.filter { c -> c.isDigit() }) },
+                            enabled = hasRound,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            textStyle = TextStyle(
+                                color = LuckyTextPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                textAlign = TextAlign.Center
+                            ),
+                            decorationBox = { innerTextField ->
+                                Box(
+                                    modifier = Modifier
+                                        .width(76.dp)
+                                        .height(36.dp)
+                                        .background(Color.White, RoundedCornerShape(6.dp))
+                                        .border(1.dp, LuckyBorder, RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (currentBrakeInput.isEmpty()) {
+                                        Text(
+                                            text = "0",
+                                            color = LuckyTextMuted,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Normal,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            },
+                            modifier = Modifier
+                                .soundOnInputFocus()
+                                .testTag("brake_limit_input")
+                        )
+
+                        AnimatedVisibility(visible = showBrakeSaveBtn) {
+                            Button(
+                                onClick = { viewModel.saveBrakeLimit() },
+                                colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
                                 shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                                 modifier = Modifier
-                                    .border(1.5.dp, LuckyDanger, RoundedCornerShape(6.dp))
-                                    .testTag("brake_header_winning_box")
+                                    .height(36.dp)
+                                    .testTag("brake_save_btn")
                             ) {
+                                Icon(Icons.Default.Save, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(stringResource(R.string.action_save), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    if (hasValidWinNum) {
+                        Surface(
+                            color = Color(0xFFFFF59D),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier
+                                .border(1.5.dp, LuckyDanger, RoundedCornerShape(6.dp))
+                                .testTag("brake_header_winning_box")
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "ပေါက်သီး",
+                                    color = LuckyDanger,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
                                 Text(
                                     text = formattedWinNum,
                                     color = LuckyDanger,
                                     fontWeight = FontWeight.ExtraBold,
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 16.sp,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    fontSize = 15.sp
                                 )
                             }
-                        }
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    AppOutlinedTextField(
-                        value = currentBrakeInput,
-                        onValueChange = { viewModel.updateBrakeLimit(it.filter { c -> c.isDigit() }) },
-                        enabled = hasRound,
-                        label = { Text(stringResource(R.string.label_brake)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .soundOnInputFocus()
-                            .testTag("brake_limit_input")
-                    )
-
-                    AnimatedVisibility(visible = showBrakeSaveBtn) {
-                        Button(
-                            onClick = {
-                                viewModel.saveBrakeLimit()
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = LuckyHeader, contentColor = Color.White),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier
-                                .height(48.dp)
-                                .testTag("brake_save_btn")
-                        ) {
-                            Icon(Icons.Default.Save, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(stringResource(R.string.action_save), fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                         }
                     }
                 }
@@ -486,10 +506,7 @@ fun BrakeScreen(
                                 }
                             }
 
-                            // Left Column Footer: "စုစုပေါင်း", Date-Wide "ရက်ချုပ်" summary (if saved for selectedDate), "သိမ်းရန်", and "ရက်ချုပ်"
-                            val dateDailySettlement = remember(settledRecords, selectedDate) {
-                                viewModel.getDailySettlementForDate(selectedDate)
-                            }
+                            // Left Column Footer: "စုစုပေါင်း", "သိမ်းရန်", and "ရက်ချုပ်"
                             HorizontalDivider(color = LuckyBorder, thickness = 1.dp)
                             Column(
                                 modifier = Modifier
@@ -508,30 +525,6 @@ fun BrakeScreen(
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier.fillMaxWidth()
                                 )
-                                if (dateDailySettlement != null) {
-                                    val dsSign = when {
-                                        dateDailySettlement.profitOrLoss > 0L -> "+"
-                                        dateDailySettlement.profitOrLoss < 0L -> "-"
-                                        else -> ""
-                                    }
-                                    val dsColor = when {
-                                        dateDailySettlement.profitOrLoss > 0L -> LuckySuccess
-                                        dateDailySettlement.profitOrLoss < 0L -> LuckyDanger
-                                        else -> LuckyTextPrimary
-                                    }
-                                    Text(
-                                        text = "ရက်ချုပ် (${selectedDate}) = $dsSign${fmt(abs(dateDailySettlement.profitOrLoss))}",
-                                        color = dsColor,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .testTag("brake_date_wide_daily_settlement_text")
-                                    )
-                                }
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)

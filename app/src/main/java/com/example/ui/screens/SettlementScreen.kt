@@ -98,192 +98,95 @@ fun SettlementScreen(viewModel: MainViewModel) {
             shadowElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
+                    IconButton(
+                        onClick = { viewModel.goBack() },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .testTag("header_back_button")
                     ) {
-                        IconButton(
-                            onClick = { viewModel.goBack() },
-                            modifier = Modifier
-                                .size(40.dp)
-                                .testTag("header_back_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "နောက်သို့",
-                                tint = Color.White
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.daily_ledger_title),
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            maxLines = 1,
-                            modifier = Modifier.testTag("daily_ledger_header_title")
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "နောက်သို့",
+                            tint = Color.White
                         )
                     }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                viewModel.exportDailySettlementsToFile(context, launchShare = true, shareAsCsv = false)
-                                showExportDialog = true
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color.White,
-                                contentColor = LuckyHeader
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            modifier = Modifier
-                                .height(34.dp)
-                                .testTag("export_settlements_btn")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Share,
-                                contentDescription = "Export",
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Export",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        Button(
-                            onClick = { showClearAllConfirm = true },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = LuckyDanger,
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            modifier = Modifier
-                                .height(34.dp)
-                                .testTag("clear_settlements_btn")
-                        ) {
-                            Text(
-                                text = stringResource(R.string.action_clear),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
+                    Text(
+                        text = stringResource(R.string.daily_ledger_title),
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        maxLines = 1,
+                        modifier = Modifier.testTag("daily_ledger_header_title")
+                    )
                 }
 
-                // Header Filter Bar: [ ရက်စွဲ (Date) ] & [ အကြိမ်ရေ (Round) ]
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp)
-                        .padding(bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    InteractiveDateChip(
-                        selectedDate = selectedDate,
-                        onDateSelected = { viewModel.setDate(it) }
-                    )
-                    SessionPill(
-                        selectedSession = selectedSession,
-                        sessions = sessions,
-                        historicalRounds = availableRounds,
-                        onSessionSelected = { viewModel.setSession(it) }
-                    )
-                }
-            }
-        }
-
-        // Date-Wide Aggregated Daily Settlement Card ("ရက်ချုပ်" for selectedDate across ALL draw rounds of that date)
-        if (currentDateDailySettlement != null) {
-            val ds = currentDateDailySettlement
-            val dsSign = when {
-                ds.profitOrLoss > 0L -> "+"
-                ds.profitOrLoss < 0L -> "-"
-                else -> ""
-            }
-            val dsColor = when {
-                ds.profitOrLoss > 0L -> LuckySuccess
-                ds.profitOrLoss < 0L -> LuckyDanger
-                else -> LuckyTextPrimary
-            }
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .padding(top = 8.dp)
-                    .border(1.dp, LuckyHeader.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
-                    .testTag("date_wide_daily_settlement_card"),
-                shape = RoundedCornerShape(10.dp),
-                colors = CardDefaults.cardColors(containerColor = LuckyCard),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Button(
+                        onClick = {
+                            viewModel.exportDailySettlementsToFile(context, launchShare = true, shareAsCsv = false)
+                            showExportDialog = true
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.White,
+                            contentColor = LuckyHeader
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .height(34.dp)
+                            .testTag("export_settlements_btn")
                     ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Export",
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "ရက်ချုပ် (${ds.date}) - အကြိမ်ရေအားလုံး (${ds.roundsSummary.ifBlank { "-" }})",
-                            color = LuckyHeader,
-                            fontSize = 13.sp,
+                            text = "Export",
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
-                        Text(
-                            text = "$dsSign${fmtThousands(abs(ds.profitOrLoss))}",
-                            color = dsColor,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.testTag("date_wide_daily_settlement_profit")
-                        )
                     }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+
+                    Button(
+                        onClick = { showClearAllConfirm = true },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = LuckyDanger,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .height(34.dp)
+                            .testTag("clear_settlements_btn")
                     ) {
                         Text(
-                            text = "ရောင်းရငွေ: ${fmtThousands(ds.totalSales)} | ကော်: ${fmtThousands(ds.totalCommission)}",
-                            color = LuckyTextSecondary,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "ပေါက်သီး: ${fmtThousands(ds.winningPayout)}",
-                            color = LuckyDanger,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
+                            text = stringResource(R.string.action_clear),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
             }
         }
 
-        // 4-Column Table: [ စဉ် | ရက်စွဲ | အပိုင်း | အမြတ်ငွေ ]
+        // 4-Column Table: [ စဉ် | ရက်စွဲ | အပိုင်း / အကြိမ် | အမြတ်ငွေ ]
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -324,7 +227,7 @@ fun SettlementScreen(viewModel: MainViewModel) {
                             .testTag("daily_col_date_header")
                     )
                     Text(
-                        text = "အပိုင်း",
+                        text = "အပိုင်း / အကြိမ်",
                         color = Color.White,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
@@ -847,7 +750,7 @@ fun DailySummaryTotalsCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "စုစုပေါင်းစာရင်းချုပ် =",
+                text = "စုစုပေါင်း အမြတ်ငွေ :",
                 fontFamily = LuckySansFontFamily,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
@@ -855,9 +758,9 @@ fun DailySummaryTotalsCard(
                 modifier = Modifier.testTag("daily_ledger_total_label")
             )
             Text(
-                text = signedTotalText,
+                text = "$signedTotalText ကျပ်",
                 fontFamily = FontFamily.Monospace,
-                fontSize = 18.sp,
+                fontSize = 17.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = resultColor,
                 modifier = Modifier.testTag("daily_total_profit_loss_value")
