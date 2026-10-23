@@ -37,7 +37,6 @@ import com.example.ui.MainViewModel
 import com.example.ui.Screen
 import com.example.ui.components.AppDatePickerModal
 import com.example.ui.components.CloverLogo
-import com.example.ui.components.SessionPill
 import com.example.ui.theme.*
 
 @Composable
@@ -48,22 +47,26 @@ fun HomeScreen(
     val selectedSession by viewModel.selectedSession.collectAsState()
     val sessions by viewModel.sessions.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
-    val availableRounds by viewModel.availableRoundsForSelectedDate.collectAsState()
     var showSessionMenu by rememberSaveable { mutableStateOf(false) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
 
     val noRoundsText = stringResource(R.string.no_rounds_yet)
 
-    val combinedRounds = remember(sessions, availableRounds, selectedSession) {
-        val configured = sessions.map { it.name.trim() }.filter { it.isNotEmpty() }
-        val avail = availableRounds.map { it.trim() }.filter { it.isNotEmpty() }
-        val active = if (selectedSession.isNotBlank()) listOf(selectedSession.trim()) else emptyList()
-        (configured + avail + active).distinct()
+    // Strictly configured rounds from Settings
+    val configuredRounds = remember(sessions) {
+        sessions.map { it.name.trim() }.filter { it.isNotEmpty() }.distinct()
     }
 
-    val displayDateText = remember(selectedDate) {
-        "ယနေ့ - ${viewModel.formatDotDate(selectedDate)}"
+    val formattedDotDate = remember(selectedDate) {
+        viewModel.formatDotDate(selectedDate)
     }
+
+    val displayDateText = remember(formattedDotDate) {
+        "ယနေ့ - $formattedDotDate"
+    }
+
+    val controlCardShape = RoundedCornerShape(12.dp)
+    val controlBorderColor = Color(0xFFE2E8F0)
 
     Column(
         modifier = modifier
@@ -71,7 +74,7 @@ fun HomeScreen(
             .background(LuckyBg)
             .navigationBarsPadding()
     ) {
-        // Top App Bar: Brand Green (#235347) header with CloverLogo, title "Lucky2D", and interactive [ ရက်စွဲ (Date) ] & [ အကြိမ်ရေ (Round) ] selectors
+        // 1. Clean Top App Bar: Strictly App Branding Title & Logo on Deep Emerald Green (#235347)
         Surface(
             color = LuckyHeader,
             shadowElevation = 3.dp,
@@ -81,16 +84,16 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.Start
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     CloverLogo(
-                        size = 36.dp,
+                        size = 38.dp,
                         modifier = Modifier.testTag("home_header_logo")
                     )
                     Text(
@@ -98,50 +101,10 @@ fun HomeScreen(
                         color = Color.White,
                         fontFamily = LuckySansFontFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
+                        fontSize = 22.sp,
                         letterSpacing = 0.3.sp,
                         maxLines = 1,
                         modifier = Modifier.testTag("home_header_title")
-                    )
-                }
-
-                // Header Interactive Date & Round Filter Controls: [ ရက်စွဲ (Date) ] [ အကြိမ်ရေ (Round) ]
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(Color.White.copy(alpha = 0.18f))
-                            .border(1.dp, Color.White.copy(alpha = 0.45f), RoundedCornerShape(18.dp))
-                            .clickable { showDatePicker = true }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                            .testTag("home_header_date_picker_btn"),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CalendarMonth,
-                            contentDescription = "ရက်စွဲ ရွေးရန်",
-                            tint = Color.White,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Text(
-                            text = selectedDate,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-
-                    SessionPill(
-                        selectedSession = selectedSession,
-                        sessions = sessions,
-                        historicalRounds = availableRounds,
-                        onSessionSelected = { viewModel.setSession(it) }
                     )
                 }
             }
@@ -151,14 +114,14 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 32.dp, vertical = 24.dp),
+                .padding(horizontal = 24.dp, vertical = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Non-Interactive Dashboard Date Banner (Above the 4 Main Menu Cards)
             Row(
                 modifier = Modifier
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                    .padding(bottom = 18.dp)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .padding(bottom = 16.dp)
                     .testTag("home_date_label"),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
@@ -180,17 +143,17 @@ fun HomeScreen(
                 )
             }
 
-            // 2x2 Grid Menu Cards
+            // 2x2 Grid Menu Cards (ကော်မရှင်, ဂဏန်းများ, ဘောင်ချာ, တင်ကွက်)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .widthIn(max = 420.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp)
+                verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 // Row 1: ကော်မရှင် | ဂဏန်းများ
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(24.dp)
+                    horizontalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
                     HomeGridCard(
                         icon = Icons.Default.People,
@@ -212,7 +175,7 @@ fun HomeScreen(
                 // Row 2: ဘောင်ချာ | တင်ကွက်
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(24.dp)
+                    horizontalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
                     HomeGridCard(
                         icon = Icons.Default.Receipt,
@@ -232,81 +195,128 @@ fun HomeScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(22.dp))
 
-            // Round Selector ("အကြိမ် ရွေးရန် :") & Settings Bar — strictly displays saved/configured rounds
+            // 2. Repositioned Selection Controls directly BELOW 4-Grid Menu Cards:
+            // [ Left: Date Selector ("ရက်စွဲ : DD.MM.YYYY") | Right: Draw Round Dropdown | Setting Button (⚙) ]
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .widthIn(max = 420.dp)
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.Center,
+                    .widthIn(max = 420.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier.weight(1f, fill = false)
+                // Left Section: Date Selector / Display ("ရက်စွဲ : 22.10.2026")
+                Surface(
+                    onClick = { showDatePicker = true },
+                    color = Color.White,
+                    shape = controlCardShape,
+                    shadowElevation = 2.dp,
+                    modifier = Modifier
+                        .weight(1.1f)
+                        .height(48.dp)
+                        .border(1.dp, controlBorderColor, controlCardShape)
+                        .testTag("home_date_selector")
                 ) {
-                    val currentRoundDisplay = if (combinedRounds.isEmpty() || selectedSession.isEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CalendarMonth,
+                            contentDescription = "ရက်စွဲ ရွေးရန်",
+                            tint = LuckyHeader,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "ရက်စွဲ : $formattedDotDate",
+                            color = LuckyTextPrimary,
+                            fontSize = 14.sp,
+                            lineHeight = 1.5.em,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                // Right Section: Draw Round Dropdown (strictly configured rounds from Settings)
+                Box(
+                    modifier = Modifier
+                        .weight(0.95f)
+                        .height(48.dp)
+                ) {
+                    val currentRoundDisplay = if (configuredRounds.isEmpty() || selectedSession.isEmpty()) {
                         noRoundsText
                     } else {
                         selectedSession
                     }
-                    Row(
+                    Surface(
+                        onClick = { showSessionMenu = true },
+                        color = Color.White,
+                        shape = controlCardShape,
+                        shadowElevation = 2.dp,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(LuckyCard)
-                            .border(1.dp, LuckyBorder, RoundedCornerShape(10.dp))
-                            .clickable { showSessionMenu = true }
-                            .padding(vertical = 8.dp, horizontal = 12.dp)
-                            .testTag("home_round_selector"),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            .fillMaxSize()
+                            .border(1.dp, controlBorderColor, controlCardShape)
+                            .testTag("home_round_selector")
                     ) {
-                        Text(
-                            text = "အကြိမ် ရွေးရန် : $currentRoundDisplay",
-                            color = LuckyTextPrimary,
-                            fontSize = 16.sp,
-                            lineHeight = 1.5.em,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = null,
-                            tint = LuckyHeader,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = currentRoundDisplay,
+                                color = LuckyTextPrimary,
+                                fontSize = 14.sp,
+                                lineHeight = 1.5.em,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = stringResource(R.string.select_round_content_desc),
+                                tint = LuckyHeader,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
 
                     DropdownMenu(
                         expanded = showSessionMenu,
                         onDismissRequest = { showSessionMenu = false },
-                        modifier = Modifier.background(LuckyCard)
+                        modifier = Modifier.background(Color.White)
                     ) {
-                        if (combinedRounds.isEmpty()) {
+                        if (configuredRounds.isEmpty()) {
                             DropdownMenuItem(
                                 text = {
                                     Text(
                                         text = noRoundsText,
                                         color = LuckyTextMuted,
-                                        fontSize = 15.sp,
+                                        fontSize = 14.sp,
                                         lineHeight = 1.5.em
                                     )
                                 },
                                 onClick = { showSessionMenu = false }
                             )
                         } else {
-                            val configuredNames = sessions.map { it.name }.toSet()
-                            combinedRounds.forEach { roundName ->
-                                val isHistoricalOnly = roundName !in configuredNames
+                            configuredRounds.forEach { roundName ->
                                 DropdownMenuItem(
                                     text = {
                                         Text(
-                                            text = if (isHistoricalOnly) "$roundName (မှတ်တမ်း)" else roundName,
+                                            text = roundName,
                                             color = if (roundName == selectedSession) LuckyHeader else LuckyTextPrimary,
-                                            fontWeight = if (roundName == selectedSession) FontWeight.Bold else FontWeight.Normal,
-                                            fontSize = 16.sp,
+                                            fontWeight = if (roundName == selectedSession) FontWeight.Bold else FontWeight.SemiBold,
+                                            fontSize = 15.sp,
                                             lineHeight = 1.5.em
                                         )
                                     },
@@ -320,24 +330,32 @@ fun HomeScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
-
-                IconButton(
+                // Setting Button (⚙): Compact square icon button alongside the selector
+                Surface(
                     onClick = { viewModel.navigateTo(Screen.SETTINGS) },
+                    color = Color.White,
+                    shape = controlCardShape,
+                    shadowElevation = 2.dp,
                     modifier = Modifier
                         .requiredSize(48.dp)
+                        .border(1.dp, controlBorderColor, controlCardShape)
                         .testTag("home_settings_button")
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "ဆက်တင်",
-                        tint = LuckyTextPrimary,
-                        modifier = Modifier.size(34.dp)
-                    )
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "ဆက်တင်",
+                            tint = LuckyHeader,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             // Footer Branding Credit
             Text(
