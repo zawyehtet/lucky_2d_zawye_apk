@@ -130,10 +130,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val dateFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     private val displayDateFormatter = SimpleDateFormat("dd MMMM yyyy", Locale.ENGLISH)
+    private val dotDateFormatter = SimpleDateFormat("dd.MM.yyyy", Locale.US)
     private val timeFormatter = SimpleDateFormat("yyyy.MM.dd/HH:mm:ss", Locale.getDefault())
 
     val todayDate: String = dateFormatter.format(Date())
     val todayDisplayDate: String = displayDateFormatter.format(Date())
+    val todayDotDate: String = dotDateFormatter.format(Date())
 
     private val _selectedDate = MutableStateFlow(todayDate)
     val selectedDate: StateFlow<String> = _selectedDate.asStateFlow()
@@ -175,6 +177,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             repository.getSettlement(date, round)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    // Date-Wide Aggregated Daily Settlement (ရက်ချုပ်) scoped strictly to selectedDate (independent of selectedRound)
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val activeDailySettlement: StateFlow<DailySettlementEntity?> = _selectedDate
+        .flatMapLatest { date ->
+            repository.getDailySettlementByDate(date)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val historicalRoundsForSelectedDate: StateFlow<List<String>> = _selectedDate
         .flatMapLatest { date ->
@@ -208,6 +217,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _settled = MutableStateFlow<List<SettledRecord>>(emptyList())
     val settled: StateFlow<List<SettledRecord>> = _settled.asStateFlow()
+
+    private val _dailySettlements = MutableStateFlow<List<DailySettlementEntity>>(emptyList())
+    val dailySettlements: StateFlow<List<DailySettlementEntity>> = _dailySettlements.asStateFlow()
+
+    val currentDateDailySettlement: StateFlow<DailySettlementEntity?> = combine(_dailySettlements, _selectedDate) { list, date ->
+        list.firstOrNull { it.date == date }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private val _settings = MutableStateFlow(AppSettings())
     val settings: StateFlow<AppSettings> = _settings.asStateFlow()
@@ -288,6 +304,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun formatDotDate(dateStr: String = _selectedDate.value): String {
+        return try {
+            val parsed = dateFormatter.parse(dateStr)
+            if (parsed != null) dotDateFormatter.format(parsed) else dateStr
+        } catch (_: Exception) {
+            dateStr
+        }
+    }
+
     val isResultInputEnabled: Boolean
         get() = hasActiveRound
 
@@ -339,6 +364,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _blocked.value = repository.loadBlocked()
         _wins.value = repository.loadWins()
         _settled.value = repository.loadSettled()
+        _dailySettlements.value = repository.loadAllDailySettlements()
 
         val histRoundsForDate = getHistoricalRoundsForDate(_selectedDate.value)
         if (loadedSessions.isNotEmpty()) {
@@ -1499,6 +1525,102 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Calculates the Date-Wide Aggregated Daily Settlement (ရက်ချုပ်) across ALL rounds of [date].
+     * Combines saved round settlements with any active rounds of [date] that have a winning number.
+     */
+    fun calculateAggregatedDailySettlementForDate(
+        date: String = _selectedDate.value,
+        includeUnsavedRoundsWithWin: Boolean = true
+    ): DailySettlementEntity {
+        val savedForDate = _settled.value.filter { it.date == date }
+        val savedBySession = savedForDate.associateBy { it.session }
+
+        val candidateRounds = if (includeUnsavedRoundsWithWin) {
+            val configured = _sessions.value.map { it.name.trim() }.filter { it.isNotEmpty() }
+            val voucherRounds = _vouchers.value.filter { it.date == date }.map { it.session.trim() }
+            val winRounds = _wins.value.filter { it.date == date }.map { it.session.trim() }
+            val savedRounds = savedForDate.map { it.session.trim() }
+            (configured + voucherRounds + winRounds + savedRounds)
+                .filter { it.isNotEmpty() && "$date|$it" !in deletedRoundKeys }
+                .distinct()
+        } else {
+            savedForDate.reversed().map { it.session.trim() }.filter { it.isNotEmpty() }.distinct()
+        }
+
+        var totalSales = 0L
+        var totalComm = 0L
+        var totalNet = 0L
+        var totalPayout = 0L
+        var totalProfitLoss = 0L
+        val includedRounds = mutableListOf<String>()
+        val winSummaries = mutableListOf<String>()
+
+        for (roundName in candidateRounds) {
+            val savedRec = savedBySession[roundName]
+            if (savedRec != null) {
+                totalSales += savedRec.totalRetained
+                totalComm += savedRec.commission
+                totalNet += savedRec.retainedNet
+                totalPayout += savedRec.payout
+                totalProfitLoss += savedRec.profitLoss
+                includedRounds.add(roundName)
+                winSummaries.add("$roundName:${savedRec.winningNumber.ifEmpty { "-" }}")
+            } else if (includeUnsavedRoundsWithWin) {
+                val winNum = _wins.value.firstOrNull { it.date == date && it.session == roundName }?.n?.trim().orEmpty()
+                val hasVouchers = _vouchers.value.any { it.date == date && it.session == roundName }
+                if (winNum.length == 2 && winNum.all { it.isDigit() } || hasVouchers) {
+                    val calc = calculateSettlementForSession(date = date, session = roundName, winningNum = winNum)
+                    if (calc.totalRetained > 0L || winNum.isNotEmpty()) {
+                        totalSales += calc.totalRetained
+                        totalComm += calc.commission
+                        totalNet += calc.retainedNet
+                        totalPayout += calc.payout
+                        totalProfitLoss += calc.profitLoss
+                        includedRounds.add(roundName)
+                        winSummaries.add("$roundName:${winNum.ifEmpty { "-" }}")
+                    }
+                }
+            }
+        }
+
+        return DailySettlementEntity(
+            date = date,
+            totalSales = totalSales,
+            totalCommission = totalComm,
+            netSales = totalNet,
+            winningPayout = totalPayout,
+            profitOrLoss = totalProfitLoss,
+            roundsSummary = includedRounds.joinToString(", "),
+            winningNumbersSummary = winSummaries.joinToString(", "),
+            roundCount = includedRounds.size,
+            timestamp = timeFormatter.format(Date())
+        )
+    }
+
+    fun getDailySettlementForDate(date: String = _selectedDate.value): DailySettlementEntity? {
+        return _dailySettlements.value.firstOrNull { it.date == date }
+            ?: repository.loadDailySettlementForDate(date)
+    }
+
+    fun saveDailySettlementForDate(
+        date: String = _selectedDate.value,
+        includeUnsavedRoundsWithWin: Boolean = true
+    ): DailySettlementEntity? {
+        val aggregated = calculateAggregatedDailySettlementForDate(
+            date = date,
+            includeUnsavedRoundsWithWin = includeUnsavedRoundsWithWin
+        )
+        if (aggregated.roundCount == 0 && _settled.value.none { it.date == date }) {
+            repository.deleteDailySettlementByDateSync(date)
+            _dailySettlements.value = repository.loadAllDailySettlements()
+            return null
+        }
+        repository.saveDailySettlement(aggregated)
+        _dailySettlements.value = repository.loadAllDailySettlements()
+        return aggregated
+    }
+
     fun commitSettlement(calc: SettledCalculation) {
         val editing = _editingSettledRecord.value
         if (editing != null) {
@@ -1517,6 +1639,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updated = _settled.value.map { if (it.id == editing.id) updatedRecord else it }
             _settled.value = updated
             repository.updateSettledRecordById(editing.id, updatedRecord)
+            saveDailySettlementForDate(date = updatedRecord.date, includeUnsavedRoundsWithWin = false)
             _editingSettledRecord.value = null
             soundManager.playSave()
             showToast("စာရင်းချုပ် ပြင်ဆင်ပြီးပါပြီ")
@@ -1526,11 +1649,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
             return
         }
-        val roundKey = "${_selectedDate.value}|${_selectedSession.value}"
+        val activeDate = _selectedDate.value
+        val roundKey = "$activeDate|${_selectedSession.value}"
         deletedRoundKeys.remove(roundKey)
         val record = SettledRecord(
             id = System.currentTimeMillis() + (nextSettledIdCounter++),
-            date = _selectedDate.value,
+            date = activeDate,
             session = _selectedSession.value,
             winningNumber = calc.winningNumber,
             totalRetained = calc.totalRetained,
@@ -1544,6 +1668,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         manuallyEditedRecordIds.add(record.id)
         _settled.value = updated
         repository.saveSettled(updated)
+        saveDailySettlementForDate(date = activeDate, includeUnsavedRoundsWithWin = true)
         soundManager.playSave()
         showToast("စာရင်းချုပ် သိမ်းဆည်းပြီးပါပြီ")
     }
@@ -1557,9 +1682,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Locks and saves the current round's settlement from the Brake ("တင်ကွက်များ") screen as an immutable
-     * record in Room DB, then navigates directly to "ရက်ချုပ်အားလုံး" (Screen.SETTLEMENT).
-     * Ledger persistence condition: requires an active round and a valid 2-digit winning number.
+     * Locks and saves the current round's settlement and the Date-Wide Consolidated Daily Settlement (ရက်ချုပ်)
+     * in Room DB (`settlements` and `daily_settlements`), then navigates to "ရက်ချုပ်အားလုံး" (Screen.SETTLEMENT).
+     * Regardless of which round ("22.AM", "22.PM", etc.) the user is viewing for that date,
+     * the saved "ရက်ချုပ်" summary remains consistently visible and accessible across all rounds of that day.
      */
     fun lockAndSaveBrakeSettlement() {
         if (!hasActiveRound) {
@@ -1610,6 +1736,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _settled.value = updated
             repository.saveSettled(updated)
         }
+
+        // Persist the Date-Wide Consolidated Daily Settlement (ရက်ချုပ်) scoped by primaryKey = [date]
+        saveDailySettlementForDate(date = date, includeUnsavedRoundsWithWin = true)
 
         soundManager.playSave()
         showToast("ရက်ချုပ် စာရင်း သိမ်းဆည်းပြီးပါပြီ")
@@ -1711,6 +1840,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val updatedList = _settled.value.map { if (it.id == existing.id) updatedRecord else it }
         _settled.value = updatedList
         repository.updateSettledRecordById(existing.id, updatedRecord)
+        saveDailySettlementForDate(date = targetDate, includeUnsavedRoundsWithWin = false)
+        if (existing.date != targetDate) {
+            saveDailySettlementForDate(date = existing.date, includeUnsavedRoundsWithWin = false)
+        }
         _editingSettledRecord.value = null
         soundManager.playSave()
         showToast("စာရင်းချုပ် ပြင်ဆင်ပြီးပါပြီ")
@@ -1754,6 +1887,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val updatedList = _settled.value.map { if (it.id == recordId) updatedRecord else it }
         _settled.value = updatedList
         repository.updateSettledRecordById(recordId, updatedRecord)
+        saveDailySettlementForDate(date = targetDate, includeUnsavedRoundsWithWin = false)
+        if (existing.date != targetDate) {
+            saveDailySettlementForDate(date = existing.date, includeUnsavedRoundsWithWin = false)
+        }
         soundManager.playSave()
         showToast("စာရင်းချုပ် ပြင်ဆင်ပြီးပါပြီ")
         return true
@@ -1768,7 +1905,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             deletedRoundKeys.add("${r.date}|${r.session}")
         }
         _settled.value = emptyList()
+        _dailySettlements.value = emptyList()
         repository.saveSettled(emptyList())
+        repository.clearAllDailySettlementsSync()
         soundManager.playDelete()
         showToast("စာရင်းချုပ် မှတ်တမ်းများကို ရှင်းထုတ်ပြီးပါပြီ")
     }
@@ -1953,6 +2092,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val updated = _settled.value.filter { it.id != recordId }
         _settled.value = updated
         repository.deleteSettledRecordById(recordId)
+        saveDailySettlementForDate(date = target.date, includeUnsavedRoundsWithWin = false)
         soundManager.playDelete()
         showToast("စာရင်းချုပ်မှတ်တမ်း ဖျက်ပြီးပါပြီ")
     }

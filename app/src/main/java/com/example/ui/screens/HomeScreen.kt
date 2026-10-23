@@ -37,7 +37,7 @@ import com.example.ui.MainViewModel
 import com.example.ui.Screen
 import com.example.ui.components.AppDatePickerModal
 import com.example.ui.components.CloverLogo
-import com.example.ui.components.CustomRoundInputDialog
+import com.example.ui.components.SessionPill
 import com.example.ui.theme.*
 
 @Composable
@@ -51,7 +51,6 @@ fun HomeScreen(
     val availableRounds by viewModel.availableRoundsForSelectedDate.collectAsState()
     var showSessionMenu by rememberSaveable { mutableStateOf(false) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
-    var showCustomRoundDialog by rememberSaveable { mutableStateOf(false) }
 
     val noRoundsText = stringResource(R.string.no_rounds_yet)
 
@@ -62,12 +61,8 @@ fun HomeScreen(
         (configured + avail + active).distinct()
     }
 
-    val displayDateText = remember(selectedDate, viewModel.todayDate, viewModel.todayDisplayDate) {
-        if (selectedDate == viewModel.todayDate) {
-            "ယနေ့ - ${viewModel.todayDisplayDate} ($selectedDate)"
-        } else {
-            "နေ့စွဲ - $selectedDate (${viewModel.formatDisplayDate(selectedDate)})"
-        }
+    val displayDateText = remember(selectedDate) {
+        "ယနေ့ - ${viewModel.formatDotDate(selectedDate)}"
     }
 
     Column(
@@ -76,7 +71,7 @@ fun HomeScreen(
             .background(LuckyBg)
             .navigationBarsPadding()
     ) {
-        // Top App Bar: Brand Green (#235347) header with CloverLogo and title "Lucky2D"
+        // Top App Bar: Brand Green (#235347) header with CloverLogo, title "Lucky2D", and interactive [ ရက်စွဲ (Date) ] & [ အကြိမ်ရေ (Round) ] selectors
         Surface(
             color = LuckyHeader,
             shadowElevation = 3.dp,
@@ -86,16 +81,16 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     CloverLogo(
-                        size = 38.dp,
+                        size = 36.dp,
                         modifier = Modifier.testTag("home_header_logo")
                     )
                     Text(
@@ -103,36 +98,50 @@ fun HomeScreen(
                         color = Color.White,
                         fontFamily = LuckySansFontFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
+                        fontSize = 20.sp,
                         letterSpacing = 0.3.sp,
+                        maxLines = 1,
                         modifier = Modifier.testTag("home_header_title")
                     )
                 }
 
-                // Header Calendar Date Picker Button
+                // Header Interactive Date & Round Filter Controls: [ ရက်စွဲ (Date) ] [ အကြိမ်ရေ (Round) ]
                 Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(Color.White.copy(alpha = 0.18f))
-                        .border(1.dp, Color.White.copy(alpha = 0.45f), RoundedCornerShape(18.dp))
-                        .clickable { showDatePicker = true }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                        .testTag("home_header_date_picker_btn"),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.CalendarMonth,
-                        contentDescription = "ရက်စွဲ ရွေးရန်",
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = selectedDate,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        maxLines = 1
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(Color.White.copy(alpha = 0.18f))
+                            .border(1.dp, Color.White.copy(alpha = 0.45f), RoundedCornerShape(18.dp))
+                            .clickable { showDatePicker = true }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .testTag("home_header_date_picker_btn"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CalendarMonth,
+                            contentDescription = "ရက်စွဲ ရွေးရန်",
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = selectedDate,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+
+                    SessionPill(
+                        selectedSession = selectedSession,
+                        sessions = sessions,
+                        historicalRounds = availableRounds,
+                        onSessionSelected = { viewModel.setSession(it) }
                     )
                 }
             }
@@ -145,11 +154,9 @@ fun HomeScreen(
                 .padding(horizontal = 32.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Interactive Date Section: Tapping opens Material 3 DatePickerDialog
+            // Non-Interactive Dashboard Date Banner (Above the 4 Main Menu Cards)
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable { showDatePicker = true }
                     .padding(horizontal = 12.dp, vertical = 8.dp)
                     .padding(bottom = 18.dp)
                     .testTag("home_date_label"),
@@ -158,7 +165,7 @@ fun HomeScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.CalendarMonth,
-                    contentDescription = "ရက်စွဲ ရွေးရန်",
+                    contentDescription = null,
                     tint = LuckyDateGreen,
                     modifier = Modifier.size(22.dp)
                 )
@@ -227,7 +234,7 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // Round Selector ("အကြိမ် ရွေးရန် :") & Settings Bar
+            // Round Selector ("အကြိမ် ရွေးရန် :") & Settings Bar — strictly displays saved/configured rounds
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -310,33 +317,6 @@ fun HomeScreen(
                                 )
                             }
                         }
-                        HorizontalDivider(color = LuckyBorder)
-                        DropdownMenuItem(
-                            text = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Add,
-                                        contentDescription = null,
-                                        tint = LuckyHeader,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Text(
-                                        text = "အကြိမ် ရိုက်ထည့်ရန်...",
-                                        color = LuckyHeader,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 14.sp,
-                                        lineHeight = 1.5.em
-                                    )
-                                }
-                            },
-                            onClick = {
-                                showSessionMenu = false
-                                showCustomRoundDialog = true
-                            }
-                        )
                     }
                 }
 
@@ -379,14 +359,6 @@ fun HomeScreen(
             currentDate = selectedDate,
             onDateSelected = { viewModel.setDate(it) },
             onDismiss = { showDatePicker = false }
-        )
-    }
-
-    if (showCustomRoundDialog) {
-        CustomRoundInputDialog(
-            initialRound = selectedSession,
-            onConfirm = { viewModel.setSession(it) },
-            onDismiss = { showCustomRoundDialog = false }
         )
     }
 }

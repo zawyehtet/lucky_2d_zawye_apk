@@ -839,5 +839,71 @@ class ExampleRobolectricTest {
         assertEquals(1, viewModel.getFilteredVouchers().size)
         assertEquals(3000L, viewModel.getFilteredVouchers().first().items.sumOf { it.a })
     }
+
+    @Test
+    fun `date wide aggregated daily settlement persists across rounds of the same date without resetting`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val viewModel = MainViewModel(app)
+        viewModel.resetAllData()
+
+        // Verify non-interactive banner date formatting ("DD.MM.YYYY")
+        assertEquals("22.10.2026", viewModel.formatDotDate("2026-10-22"))
+
+        viewModel.setDate("2026-10-22")
+        viewModel.addSession("22.AM", 10.0, 80.0)
+        viewModel.addSession("22.PM", 10.0, 80.0)
+
+        // 1. Round "22.AM": Add agent, bet 5000 on "15", set winning number "99" (no payout), and save settlement ("သိမ်းရန်")
+        viewModel.setRound("22.AM")
+        viewModel.addAgent("ကိုအောင်", 10.0, 80.0)
+        viewModel.setEntryAgent(viewModel.agents.value.first())
+        viewModel.addEntryItems(listOf(BetItem("15", 5000L)))
+        assertTrue(viewModel.commitCurrentVoucher())
+        viewModel.setWinningNumber("99")
+        viewModel.lockAndSaveBrakeSettlement()
+
+        val afterAmDaily = viewModel.getDailySettlementForDate("2026-10-22")
+        assertTrue(afterAmDaily != null)
+        assertEquals("2026-10-22", afterAmDaily!!.date)
+        assertEquals(5000L, afterAmDaily.totalSales)
+        assertEquals(500L, afterAmDaily.totalCommission)
+        assertEquals(4500L, afterAmDaily.netSales)
+        assertEquals(0L, afterAmDaily.winningPayout)
+        assertEquals(4500L, afterAmDaily.profitOrLoss)
+        assertEquals(1, afterAmDaily.roundCount)
+
+        // 2. Switch to "22.PM" on the same date "2026-10-22":
+        // The saved Date-Wide Daily Settlement ("ရက်ချုပ်") for "2026-10-22" must remain accessible and NOT reset!
+        viewModel.setRound("22.PM")
+        val dailyWhileOnPm = viewModel.getDailySettlementForDate("2026-10-22")
+        assertTrue(dailyWhileOnPm != null)
+        assertEquals(4500L, dailyWhileOnPm!!.profitOrLoss)
+
+        // 3. Now add bets in "22.PM" (3000 on "42", win "88") and save settlement ("သိမ်းရန်")
+        viewModel.addAgent("ကိုမင်း", 10.0, 80.0)
+        viewModel.setEntryAgent(viewModel.agents.value.first())
+        viewModel.addEntryItems(listOf(BetItem("42", 3000L)))
+        assertTrue(viewModel.commitCurrentVoucher())
+        viewModel.setWinningNumber("88")
+        viewModel.lockAndSaveBrakeSettlement()
+
+        // 4. Consolidated Date-Wide Daily Settlement ("ရက်ချုပ်") for "2026-10-22" now aggregates BOTH "22.AM" and "22.PM"
+        val combinedDaily = viewModel.getDailySettlementForDate("2026-10-22")
+        assertTrue(combinedDaily != null)
+        assertEquals(8000L, combinedDaily!!.totalSales) // 5000 + 3000
+        assertEquals(800L, combinedDaily.totalCommission) // 500 + 300
+        assertEquals(7200L, combinedDaily.netSales) // 4500 + 2700
+        assertEquals(0L, combinedDaily.winningPayout)
+        assertEquals(7200L, combinedDaily.profitOrLoss) // 4500 + 2700
+        assertEquals(2, combinedDaily.roundCount)
+        assertTrue(combinedDaily.roundsSummary.contains("22.AM"))
+        assertTrue(combinedDaily.roundsSummary.contains("22.PM"))
+
+        // Switching back and forth between "22.AM" and "22.PM" preserves the consolidated daily settlement
+        viewModel.setRound("22.AM")
+        assertEquals(7200L, viewModel.getDailySettlementForDate("2026-10-22")?.profitOrLoss)
+        viewModel.setRound("22.PM")
+        assertEquals(7200L, viewModel.getDailySettlementForDate("2026-10-22")?.profitOrLoss)
+    }
 }
 

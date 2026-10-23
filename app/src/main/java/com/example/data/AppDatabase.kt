@@ -294,6 +294,8 @@ interface SessionDao {
 
 typealias AgentEntity = com.example.data.local.entity.AgentEntity
 typealias AgentDao = com.example.data.local.dao.AgentDao
+typealias DailySettlementEntity = com.example.data.local.entity.DailySettlementEntity
+typealias DailySettlementDao = com.example.data.local.dao.DailySettlementDao
 
 @Database(
     entities = [
@@ -301,9 +303,10 @@ typealias AgentDao = com.example.data.local.dao.AgentDao
         VoucherEntity::class,
         WinningNumberEntity::class,
         SettlementEntity::class,
+        DailySettlementEntity::class,
         SessionEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -311,6 +314,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun voucherDao(): VoucherDao
     abstract fun winningNumberDao(): WinningNumberDao
     abstract fun settlementDao(): SettlementDao
+    abstract fun dailySettlementDao(): DailySettlementDao
     abstract fun sessionDao(): SessionDao
 
     companion object {

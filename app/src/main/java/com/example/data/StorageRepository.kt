@@ -14,6 +14,7 @@ class StorageRepository(context: Context) {
     val voucherDao: VoucherDao = database.voucherDao()
     val winningNumberDao: WinningNumberDao = database.winningNumberDao()
     val settlementDao: SettlementDao = database.settlementDao()
+    val dailySettlementDao: DailySettlementDao = database.dailySettlementDao()
     val sessionDao: SessionDao = database.sessionDao()
 
     companion object {
@@ -26,6 +27,7 @@ class StorageRepository(context: Context) {
         private const val KEY_BLOCKED = "lucky2d_blocked"
         private const val KEY_WINS = "lucky2d_wins"
         private const val KEY_SETTLED = "lucky2d_settled"
+        private const val KEY_DAILY_SETTLED = "lucky2d_daily_settled"
         private const val KEY_SETTINGS = "lucky2d_settings"
 
         private val DEFAULT_ROUND_NAMES_12AM = setOf("12.AM", "12AM")
@@ -660,8 +662,151 @@ class StorageRepository(context: Context) {
             settlementDao.insertAllSettlementsSync(
                 records.map { SettlementEntity.fromDomainSettledRecord(it) }
             )
+            rebuildDailySettlementsFromRecordsSync(records)
         } catch (e: Exception) {
             Log.e("StorageRepository", "Error saving settled records", e)
+        }
+    }
+
+    private fun rebuildDailySettlementsFromRecordsSync(records: List<SettledRecord>) {
+        try {
+            val grouped = records.groupBy { it.date }
+            dailySettlementDao.clearAllDailySettlementsSync()
+            val dailyList = grouped.map { (date, dateRecords) ->
+                val ordered = dateRecords.reversed()
+                DailySettlementEntity(
+                    date = date,
+                    totalSales = dateRecords.sumOf { it.totalRetained },
+                    totalCommission = dateRecords.sumOf { it.commission },
+                    netSales = dateRecords.sumOf { it.retainedNet },
+                    winningPayout = dateRecords.sumOf { it.payout },
+                    profitOrLoss = dateRecords.sumOf { it.profitLoss },
+                    roundsSummary = ordered.joinToString(", ") { it.session },
+                    winningNumbersSummary = ordered.joinToString(", ") { "${it.session}:${it.winningNumber.ifEmpty { "-" }}" },
+                    roundCount = dateRecords.size,
+                    timestamp = dateRecords.firstOrNull()?.timestamp ?: ""
+                )
+            }
+            if (dailyList.isNotEmpty()) {
+                dailySettlementDao.insertAllDailySettlementsSync(dailyList)
+            }
+            syncAllDailySettlementsToPrefs()
+        } catch (e: Exception) {
+            Log.e("StorageRepository", "Error rebuilding daily settlements", e)
+        }
+    }
+
+    private fun syncAllDailySettlementsToPrefs() {
+        try {
+            val allDaily = dailySettlementDao.getAllDailySettlementsSync()
+            val arr = JSONArray()
+            allDaily.forEach { d ->
+                val obj = JSONObject().apply {
+                    put("date", d.date)
+                    put("totalSales", d.totalSales)
+                    put("totalCommission", d.totalCommission)
+                    put("netSales", d.netSales)
+                    put("winningPayout", d.winningPayout)
+                    put("profitOrLoss", d.profitOrLoss)
+                    put("roundsSummary", d.roundsSummary)
+                    put("winningNumbersSummary", d.winningNumbersSummary)
+                    put("roundCount", d.roundCount)
+                    put("timestamp", d.timestamp)
+                }
+                arr.put(obj)
+            }
+            prefs.edit().putString(KEY_DAILY_SETTLED, arr.toString()).apply()
+        } catch (e: Exception) {
+            Log.e("StorageRepository", "Error syncing daily settlements to prefs", e)
+        }
+    }
+
+    fun getDailySettlementByDate(date: String): kotlinx.coroutines.flow.Flow<DailySettlementEntity?> =
+        dailySettlementDao.getDailySettlementByDate(date)
+
+    fun getAllDailySettlements(): kotlinx.coroutines.flow.Flow<List<DailySettlementEntity>> =
+        dailySettlementDao.getAllDailySettlements()
+
+    fun loadDailySettlementForDate(date: String): DailySettlementEntity? {
+        return try {
+            dailySettlementDao.getDailySettlementByDateSync(date)
+        } catch (e: Exception) {
+            Log.e("StorageRepository", "Error loading daily settlement for $date", e)
+            null
+        }
+    }
+
+    fun loadAllDailySettlements(): List<DailySettlementEntity> {
+        return try {
+            val fromRoom = dailySettlementDao.getAllDailySettlementsSync()
+            if (fromRoom.isNotEmpty()) {
+                fromRoom
+            } else {
+                val jsonStr = prefs.getString(KEY_DAILY_SETTLED, null)
+                if (!jsonStr.isNullOrEmpty()) {
+                    val arr = JSONArray(jsonStr)
+                    val list = mutableListOf<DailySettlementEntity>()
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        list.add(
+                            DailySettlementEntity(
+                                date = obj.getString("date"),
+                                totalSales = obj.optLong("totalSales", 0L),
+                                totalCommission = obj.optLong("totalCommission", 0L),
+                                netSales = obj.optLong("netSales", 0L),
+                                winningPayout = obj.optLong("winningPayout", 0L),
+                                profitOrLoss = obj.optLong("profitOrLoss", 0L),
+                                roundsSummary = obj.optString("roundsSummary", ""),
+                                winningNumbersSummary = obj.optString("winningNumbersSummary", ""),
+                                roundCount = obj.optInt("roundCount", 0),
+                                timestamp = obj.optString("timestamp", "")
+                            )
+                        )
+                    }
+                    if (list.isNotEmpty()) {
+                        dailySettlementDao.insertAllDailySettlementsSync(list)
+                    }
+                    list
+                } else {
+                    val settled = loadSettled()
+                    if (settled.isNotEmpty()) {
+                        rebuildDailySettlementsFromRecordsSync(settled)
+                        dailySettlementDao.getAllDailySettlementsSync()
+                    } else {
+                        emptyList()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("StorageRepository", "Error loading all daily settlements", e)
+            emptyList()
+        }
+    }
+
+    fun saveDailySettlement(entity: DailySettlementEntity) {
+        try {
+            dailySettlementDao.insertOrUpdateDailySettlementSync(entity)
+            syncAllDailySettlementsToPrefs()
+        } catch (e: Exception) {
+            Log.e("StorageRepository", "Error saving daily settlement for ${entity.date}", e)
+        }
+    }
+
+    fun deleteDailySettlementByDateSync(date: String) {
+        try {
+            dailySettlementDao.deleteDailySettlementByDateSync(date)
+            syncAllDailySettlementsToPrefs()
+        } catch (e: Exception) {
+            Log.e("StorageRepository", "Error deleting daily settlement for $date", e)
+        }
+    }
+
+    fun clearAllDailySettlementsSync() {
+        try {
+            dailySettlementDao.clearAllDailySettlementsSync()
+            prefs.edit().remove(KEY_DAILY_SETTLED).apply()
+        } catch (e: Exception) {
+            Log.e("StorageRepository", "Error clearing daily settlements", e)
         }
     }
 
@@ -809,6 +954,7 @@ class StorageRepository(context: Context) {
             voucherDao.clearAllVouchersSync()
             winningNumberDao.clearAllWinningNumbersSync()
             settlementDao.clearAllSettlementsSync()
+            dailySettlementDao.clearAllDailySettlementsSync()
             sessionDao.clearAllSessionsSync()
         } catch (e: Exception) {
             Log.e("StorageRepository", "Error resetting data", e)

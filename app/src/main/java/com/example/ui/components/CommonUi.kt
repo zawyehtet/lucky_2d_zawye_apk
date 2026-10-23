@@ -669,7 +669,6 @@ fun SessionPill(
     modifier: Modifier = Modifier
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
-    var showCustomDialog by rememberSaveable { mutableStateOf(false) }
     val noRoundsText = stringResource(R.string.no_rounds_yet)
 
     val combinedRounds = remember(sessions, historicalRounds, selectedSession) {
@@ -742,44 +741,7 @@ fun SessionPill(
                     )
                 }
             }
-            HorizontalDivider(color = LuckyBorder)
-            DropdownMenuItem(
-                text = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = null,
-                            tint = LuckyHeader,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = "အကြိမ် ရိုက်ထည့်ရန်...",
-                            color = LuckyHeader,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp
-                        )
-                    }
-                },
-                onClick = {
-                    expanded = false
-                    showCustomDialog = true
-                },
-                modifier = Modifier.testTag("custom_round_menu_item")
-            )
         }
-    }
-
-    if (showCustomDialog) {
-        CustomRoundInputDialog(
-            initialRound = selectedSession,
-            onConfirm = { newRound ->
-                onSessionSelected(newRound)
-            },
-            onDismiss = { showCustomDialog = false }
-        )
     }
 }
 

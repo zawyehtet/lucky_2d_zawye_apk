@@ -486,7 +486,10 @@ fun BrakeScreen(
                                 }
                             }
 
-                            // Left Column Footer: "စုစုပေါင်း", "+ သိမ်းမည်" (or "သိမ်းရန်" post-draw), and "ရက်ချုပ်"
+                            // Left Column Footer: "စုစုပေါင်း", Date-Wide "ရက်ချုပ်" summary (if saved for selectedDate), "သိမ်းရန်", and "ရက်ချုပ်"
+                            val dateDailySettlement = remember(settledRecords, selectedDate) {
+                                viewModel.getDailySettlementForDate(selectedDate)
+                            }
                             HorizontalDivider(color = LuckyBorder, thickness = 1.dp)
                             Column(
                                 modifier = Modifier
@@ -505,6 +508,30 @@ fun BrakeScreen(
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier.fillMaxWidth()
                                 )
+                                if (dateDailySettlement != null) {
+                                    val dsSign = when {
+                                        dateDailySettlement.profitOrLoss > 0L -> "+"
+                                        dateDailySettlement.profitOrLoss < 0L -> "-"
+                                        else -> ""
+                                    }
+                                    val dsColor = when {
+                                        dateDailySettlement.profitOrLoss > 0L -> LuckySuccess
+                                        dateDailySettlement.profitOrLoss < 0L -> LuckyDanger
+                                        else -> LuckyTextPrimary
+                                    }
+                                    Text(
+                                        text = "ရက်ချုပ် (${selectedDate}) = $dsSign${fmt(abs(dateDailySettlement.profitOrLoss))}",
+                                        color = dsColor,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("brake_date_wide_daily_settlement_text")
+                                    )
+                                }
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
