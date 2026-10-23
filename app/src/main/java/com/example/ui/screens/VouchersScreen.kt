@@ -64,7 +64,6 @@ fun VouchersScreen(
         viewModel.getAvailableRoundsForDate(selectedDate)
     }
     val hasRound = selectedSession.isNotBlank() && (sessions.any { it.name == selectedSession } || availableRounds.contains(selectedSession))
-    val noRoundsText = stringResource(R.string.no_rounds_yet)
 
     val filterAgent by viewModel.selectedVoucherFilterAgent.collectAsState()
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -113,29 +112,10 @@ fun VouchersScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                    .padding(top = 10.dp, start = 14.dp, end = 14.dp, bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 RoundRequiredHelperBanner(visible = !hasRound)
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    com.example.ui.components.InteractiveDateChip(
-                        selectedDate = selectedDate,
-                        onDateSelected = { viewModel.setDate(it) },
-                        labelText = "နေ့စွဲ : $selectedDate (${if (hasRound) selectedSession else noRoundsText})"
-                    )
-                    Text(
-                        text = "စုစုပေါင်း ဘောင်ချာ : ${filteredVouchers.size} စောင်",
-                        color = LuckyHeader,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.testTag("voucher_count_label")
-                    )
-                }
 
                 SearchPill(
                     query = searchQuery,

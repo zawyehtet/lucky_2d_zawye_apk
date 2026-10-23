@@ -71,7 +71,6 @@ fun NumbersScreen(
         viewModel.getAvailableRoundsForDate(selectedDate)
     }
     val hasRound = selectedSession.isNotBlank() && (sessions.any { it.name == selectedSession } || availableRounds.contains(selectedSession))
-    val noRoundsText = stringResource(R.string.no_rounds_yet)
 
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var selectedNumberForBreakdown by rememberSaveable { mutableStateOf<String?>(null) }
@@ -126,35 +125,17 @@ fun NumbersScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
+                .padding(top = 10.dp, start = 14.dp, end = 14.dp, bottom = 6.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             RoundRequiredHelperBanner(visible = !hasRound)
-
-            // Date & Search Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                com.example.ui.components.InteractiveDateChip(
-                    selectedDate = selectedDate,
-                    onDateSelected = { viewModel.setDate(it) },
-                    labelText = "နေ့စွဲ : $selectedDate (${if (hasRound) selectedSession else noRoundsText})"
-                )
-                Text(
-                    text = "စုစုပေါင်း ဂဏန်း : ${filteredSummaries.size} လုံး",
-                    color = LuckyHeader,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
 
             SearchPill(
                 query = searchQuery,
                 onQueryChange = { searchQuery = it },
                 label = stringResource(R.string.label_search_number),
-                enabled = hasRound
+                enabled = hasRound,
+                modifier = Modifier.testTag("number_search_input")
             )
         }
 
