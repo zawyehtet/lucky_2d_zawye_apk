@@ -50,7 +50,6 @@ fun AgentsScreen(
         viewModel.getAvailableRoundsForDate(selectedDate)
     }
     val hasRound = selectedSession.isNotBlank() && (sessions.any { it.name == selectedSession } || availableRounds.contains(selectedSession))
-    val noRoundsText = stringResource(R.string.no_rounds_yet)
 
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
@@ -84,27 +83,10 @@ fun AgentsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                    .padding(top = 10.dp, start = 14.dp, end = 14.dp, bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 RoundRequiredHelperBanner(visible = !hasRound)
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    InteractiveDateChip(
-                        selectedDate = selectedDate,
-                        onDateSelected = { viewModel.setDate(it) }
-                    )
-                    Text(
-                        text = "${stringResource(R.string.round_label)} : ${if (hasRound) selectedSession else noRoundsText}",
-                        color = LuckyHeader,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
 
                 SearchPill(
                     query = searchQuery,
