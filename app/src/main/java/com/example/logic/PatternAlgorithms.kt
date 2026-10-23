@@ -547,4 +547,54 @@ object PatternAlgorithms {
         }
         return BetAmountValidationResult.Valid
     }
+
+    /**
+     * Standalone parser for 2D expressions supporting R split amount syntax using '/':
+     * Case 1: Standard single amount (e.g. "58=3000") -> 58 = 3000
+     * Case 2: Split amount with slash (e.g. "58=3000/2000") -> 58 = 3000, 85 = 2000
+     * Case 3: Twin numbers (e.g. "55=3000/2000") -> 55 = 5000 (combines amounts)
+     */
+    fun parseBetInput(input: String): List<BetItem> {
+        val trimmed = input.trim()
+        if (trimmed.isEmpty()) return emptyList()
+
+        val normalized = trimmed.replace(Regex("\\s*([=/])\\s*"), "$1")
+
+        // Case 2 & 3: Split amount with slash ^(\d{2})=(\d+)/(\d+)$
+        val splitAmountRegex = Regex("""^(\d{2})=(\d+)/(\d+)$""")
+        val splitMatch = splitAmountRegex.matchEntire(normalized)
+        if (splitMatch != null) {
+            val baseNumber = splitMatch.groupValues[1]
+            val directAmount = splitMatch.groupValues[2].toLongOrNull() ?: 0L
+            val reverseAmount = splitMatch.groupValues[3].toLongOrNull() ?: 0L
+            val reverseNumber = reverse2D(baseNumber)
+
+            val entries = mutableListOf<BetItem>()
+            if (baseNumber == reverseNumber) {
+                // Case 3: Twin numbers: combine direct and reverse amounts
+                entries.add(BetItem(baseNumber, directAmount + reverseAmount))
+            } else {
+                // Case 2: Direct Entry
+                entries.add(BetItem(baseNumber, directAmount))
+                // Reverse Entry (R)
+                if (reverseAmount > 0L) {
+                    entries.add(BetItem(reverseNumber, reverseAmount))
+                }
+            }
+            return entries
+        }
+
+        // Case 1: Standard single amount ^(\d{2})=(\d+)$
+        val singleAmountRegex = Regex("""^(\d{2})=(\d+)$""")
+        val singleMatch = singleAmountRegex.matchEntire(normalized)
+        if (singleMatch != null) {
+            val baseNumber = singleMatch.groupValues[1]
+            val amount = singleMatch.groupValues[2].toLongOrNull() ?: 0L
+            return listOf(BetItem(baseNumber, amount))
+        }
+
+        return emptyList()
+    }
 }
+
+fun parseBetInput(input: String): List<BetItem> = PatternAlgorithms.parseBetInput(input)

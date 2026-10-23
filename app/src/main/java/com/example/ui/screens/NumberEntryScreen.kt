@@ -184,12 +184,55 @@ fun NumberEntryScreen(
                 }
             }
             else -> {
-                val digitsOnly = num.filter { it.isDigit() }
+                val allowedChars = num.filter { it.isDigit() || it == '/' }
                 if (shouldOverwriteAmount) {
-                    inputAmount = digitsOnly
+                    inputAmount = allowedChars
                     shouldOverwriteAmount = false
                 } else {
-                    inputAmount += digitsOnly
+                    if (allowedChars.contains("/") && inputAmount.contains("/")) {
+                        val digitsOnly = allowedChars.filter { it.isDigit() }
+                        inputAmount += digitsOnly
+                    } else {
+                        inputAmount += allowedChars
+                    }
+                }
+            }
+        }
+    }
+
+    fun onKeypadSlashPress() {
+        if (!hasRound) {
+            viewModel.showToast("အကြိမ်ရေ အရင်ထည့်ပါ")
+            return
+        }
+        viewModel.onInputFocusOrTap()
+        when (activeField) {
+            "NUMBER" -> {
+                if (inputNumber.isNotEmpty()) {
+                    if (inputPattern.isEmpty()) {
+                        inputPattern = "ဒဲ့"
+                    }
+                    advanceToAmount()
+                    if (inputAmount.isNotEmpty() && !inputAmount.contains("/")) {
+                        inputAmount += "/"
+                        shouldOverwriteAmount = false
+                    }
+                }
+            }
+            "PATTERN" -> {
+                if (inputPattern.isEmpty()) {
+                    inputPattern = "ဒဲ့"
+                }
+                advanceToAmount()
+                if (inputAmount.isNotEmpty() && !inputAmount.contains("/")) {
+                    inputAmount += "/"
+                    shouldOverwriteAmount = false
+                }
+            }
+            else -> {
+                shouldOverwriteAmount = false
+                if (!inputAmount.contains("/")) {
+                    inputAmount = if (inputAmount.isEmpty()) "/" else "$inputAmount/"
                 }
             }
         }
@@ -250,6 +293,40 @@ fun NumberEntryScreen(
             return
         }
 
+        // Check if inputNumber or inputAmount is a full expression like 58=3000/2000 or 58=3000
+        val fullInput = when {
+            inputNumber.contains("=") -> inputNumber
+            inputAmount.contains("=") -> inputAmount
+            else -> null
+        }
+        if (fullInput != null) {
+            val parsedItems = PatternAlgorithms.parseBetInput(fullInput)
+            if (parsedItems.isNotEmpty()) {
+                val betList = mutableListOf<BetItem>()
+                val blockedFound = mutableListOf<String>()
+                for (item in parsedItems) {
+                    if (blocked.contains(item.n)) {
+                        blockedFound.add(item.n)
+                    } else {
+                        betList.add(item)
+                    }
+                }
+                if (blockedFound.isNotEmpty()) {
+                    viewModel.showToast("မရဂဏန်း (${blockedFound.joinToString()}) ကို ချန်လှပ်ခဲ့ပါသည်")
+                }
+                if (betList.isNotEmpty()) {
+                    viewModel.addEntryItems(betList)
+                    inputNumber = ""
+                    inputPattern = "ဒဲ့"
+                    inputAmount = ""
+                    isReverseOn = false
+                    activeField = "NUMBER"
+                    shouldOverwriteAmount = false
+                }
+                return
+            }
+        }
+
         val amountValidation = validateBetAmount(inputAmount)
         if (!amountValidation.isValid) {
             amountValidationError = true
@@ -257,7 +334,18 @@ fun NumberEntryScreen(
             activeField = "AMOUNT"
             return
         }
-        val amount = MainViewModel.parseAmountOrZero(inputAmount)
+
+        val isSplitAmount = inputAmount.contains("/")
+        val directAmount: Long
+        val reverseAmount: Long
+        if (isSplitAmount) {
+            val parts = inputAmount.split("/")
+            directAmount = parts.getOrNull(0)?.trim()?.toLongOrNull() ?: 0L
+            reverseAmount = parts.getOrNull(1)?.trim()?.toLongOrNull() ?: 0L
+        } else {
+            directAmount = MainViewModel.parseAmountOrZero(inputAmount)
+            reverseAmount = 0L
+        }
 
         val effectivePattern = inputPattern.ifEmpty { "ဒဲ့" }
 
@@ -285,7 +373,7 @@ fun NumberEntryScreen(
         val generatedNumbers = PatternAlgorithms.generateNumbersForPattern(
             pattern = effectivePattern,
             inputNumber = inputNumber,
-            withReverse = isReverseOn,
+            withReverse = if (isSplitAmount) false else isReverseOn,
             withDoublesForKway = withDoublesForKway
         )
 
@@ -297,11 +385,41 @@ fun NumberEntryScreen(
         val betList = mutableListOf<BetItem>()
         val blockedFound = mutableListOf<String>()
 
-        for (num in generatedNumbers) {
-            if (blocked.contains(num)) {
-                blockedFound.add(num)
-            } else {
-                betList.add(BetItem(num, amount))
+        if (isSplitAmount) {
+            for (num in generatedNumbers) {
+                val rev = PatternAlgorithms.reverse2D(num)
+                if (rev == num) {
+                    // Twin number (အပူး): combine direct and reverse amounts (Case 3)
+                    val combinedAmt = directAmount + reverseAmount
+                    if (blocked.contains(num)) {
+                        blockedFound.add(num)
+                    } else {
+                        betList.add(BetItem(num, combinedAmt))
+                    }
+                } else {
+                    // Direct entry (Case 2)
+                    if (blocked.contains(num)) {
+                        blockedFound.add(num)
+                    } else {
+                        betList.add(BetItem(num, directAmount))
+                    }
+                    // Reverse entry (အာ)
+                    if (reverseAmount > 0L) {
+                        if (blocked.contains(rev)) {
+                            blockedFound.add(rev)
+                        } else {
+                            betList.add(BetItem(rev, reverseAmount))
+                        }
+                    }
+                }
+            }
+        } else {
+            for (num in generatedNumbers) {
+                if (blocked.contains(num)) {
+                    blockedFound.add(num)
+                } else {
+                    betList.add(BetItem(num, directAmount))
+                }
             }
         }
 
@@ -784,9 +902,10 @@ fun NumberEntryScreen(
                         text = "/",
                         bgColor = LuckyHeader,
                         textColor = Color.White,
-                        modifier = Modifier.weight(1f),
+                        isBold = true,
+                        modifier = Modifier.weight(1f).testTag("keypad_slash_btn"),
                         onClick = {
-                            onAdvanceFocusPress()
+                            onKeypadSlashPress()
                         }
                     )
                 }
@@ -1366,7 +1485,7 @@ fun EditBetItemDialog(
                                 )
                             }
                         } else null,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                         singleLine = true,
                         modifier = Modifier
                             .fillMaxWidth()

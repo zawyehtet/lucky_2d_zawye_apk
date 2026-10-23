@@ -279,5 +279,50 @@ class ExampleUnitTest {
         val sig2 = com.example.security.LicenseManager.computeActivationSignature("other_device_id")
         assertFalse(com.example.security.SecurityManager.constantTimeEquals(sig1, sig2))
     }
+
+    @Test
+    fun testParseBetInputCases() {
+        // Case 1: Standard Single Amount (58=3000)
+        val singleResult = PatternAlgorithms.parseBetInput("58=3000")
+        assertEquals(1, singleResult.size)
+        assertEquals("58", singleResult[0].n)
+        assertEquals(3000L, singleResult[0].a)
+
+        // Case 2: Split Amount with Slash (58=3000/2000)
+        val splitResult = PatternAlgorithms.parseBetInput("58=3000/2000")
+        assertEquals(2, splitResult.size)
+        assertEquals("58", splitResult[0].n)
+        assertEquals(3000L, splitResult[0].a)
+        assertEquals("85", splitResult[1].n)
+        assertEquals(2000L, splitResult[1].a)
+
+        // Case 3: Edge Case Handling - Twin numbers (55=3000/2000) combines to 5000
+        val twinResult = PatternAlgorithms.parseBetInput("55=3000/2000")
+        assertEquals(1, twinResult.size)
+        assertEquals("55", twinResult[0].n)
+        assertEquals(5000L, twinResult[0].a)
+
+        // Spacing tolerance (58 = 3000 / 2000)
+        val spacedResult = PatternAlgorithms.parseBetInput(" 58 = 3000 / 2000 ")
+        assertEquals(2, spacedResult.size)
+        assertEquals("58", spacedResult[0].n)
+        assertEquals(3000L, spacedResult[0].a)
+        assertEquals("85", spacedResult[1].n)
+        assertEquals(2000L, spacedResult[1].a)
+    }
+
+    @Test
+    fun testValidateBetAmountAndParseAmountOrZeroWithSlash() {
+        assertTrue(com.example.data.validateBetAmount("3000/2000").isValid)
+        assertTrue(com.example.data.validateBetAmount("500/100").isValid)
+        assertFalse(com.example.data.validateBetAmount("3000/").isValid)
+        assertFalse(com.example.data.validateBetAmount("/2000").isValid)
+        assertFalse(com.example.data.validateBetAmount("3000/-100").isValid)
+        assertFalse(com.example.data.validateBetAmount("3000/abc").isValid)
+        assertFalse(com.example.data.validateBetAmount("3000/2000/1000").isValid)
+
+        assertEquals(5000L, com.example.ui.MainViewModel.parseAmountOrZero("3000/2000"))
+        assertEquals(600L, com.example.ui.MainViewModel.parseAmountOrZero("500/100"))
+    }
 }
 

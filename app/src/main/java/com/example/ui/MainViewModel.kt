@@ -77,11 +77,19 @@ data class Agent2DSettlementItem(
     val payout: Long,
     val profitLoss: Long
 )
-
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
-        fun parseAmountOrZero(input: String): Long = input.trim().toLongOrNull() ?: 0L
+        fun parseAmountOrZero(input: String): Long {
+            val trimmed = input.trim()
+            if (trimmed.contains("/")) {
+                val parts = trimmed.split("/")
+                val p1 = parts.getOrNull(0)?.trim()?.toLongOrNull() ?: 0L
+                val p2 = parts.getOrNull(1)?.trim()?.toLongOrNull() ?: 0L
+                return p1 + p2
+            }
+            return trimmed.toLongOrNull() ?: 0L
+        }
         fun parseDoubleOrZero(input: String): Double = input.trim().toDoubleOrNull() ?: 0.0
 
         fun validateBetAmountInput(rawInput: String?): BetAmountValidationResult = validateBetAmount(rawInput)
